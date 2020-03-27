@@ -65,23 +65,24 @@ func (m *machine) process(state state, out []int16) {
 			}
 		}
 		// check if a new sample should start in the current audio buffer
-		if tick != -1 {
-			pattern := state.patterns[i]
-			step := &state.steps[i]
-			if *step >= len(pattern) {
-				*step = 0
-			}
-			if pattern[*step] != 0 && !state.muted[i] {
-				for k, pos := range snd.voices {
-					if pos == 0 {
-						// multiply tick by 2 because sample buffer is stereo-interleaved
-						snd.voices[k] = sum(m.sum[tick*2:], snd.buf, 0, gain, env)
-						break
-					}
+		if tick == -1 {
+			continue
+		}
+		pattern := state.patterns[i]
+		step := &state.steps[i]
+		if *step >= len(pattern) {
+			*step = 0
+		}
+		if pattern[*step] != 0 && !state.muted[i] {
+			for k, pos := range snd.voices {
+				if pos == 0 {
+					// multiply tick by 2 because sample buffer is stereo-interleaved
+					snd.voices[k] = sum(m.sum[tick*2:], snd.buf, 0, gain, env)
+					break
 				}
 			}
-			*step++
 		}
+		*step++
 	}
 
 	const scale = 1 << 15 // assumes 16 bit output
