@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/gordonklaus/portaudio"
 )
@@ -54,6 +55,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	decay := make([]time.Duration, len(samples))
+	for i := range decay {
+		decay[i] = time.Second * 2
+	}
+
 	session := &session{
 		machine: &machine{
 			clock:  &clock{sampleRate: sampleRate},
@@ -71,6 +77,7 @@ func main() {
 			muted:      make([]bool, len(samples)),
 			patterns:   patterns,
 			gain:       make([]float64, len(samples)),
+			decay:      decay,
 		},
 	}
 
@@ -122,6 +129,7 @@ type state struct {
 	patternLen int
 	muted      []bool
 	gain       []float64 // gain in dB
+	decay      []time.Duration
 }
 
 type savedState struct {

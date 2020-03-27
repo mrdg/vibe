@@ -116,6 +116,15 @@ func (c *command) exec(s *session) error {
 			return fmt.Errorf("can't gain by more than 6dB")
 		}
 		s.update(func(st *state) { st.gain[i] = db })
+	case "decay":
+		d, err := time.ParseDuration(c.args[1])
+		if err != nil {
+			return err
+		}
+		if d < time.Millisecond*5 || d > time.Second*2 {
+			return fmt.Errorf("%v is out of range 5ms - 2s", d)
+		}
+		s.update(func(st *state) { st.decay[i] = d })
 	case "start":
 		return s.stream.Start()
 	case "stop":

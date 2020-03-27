@@ -4,6 +4,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"time"
 
 	wav "github.com/youpy/go-wav"
 )
@@ -55,10 +56,12 @@ func (m *machine) process(state state, out []int16) {
 
 	for i, snd := range m.sounds {
 		gain := math.Pow(10, state.gain[i]/20.0)
+		env := envDecay(m.clock.sampleRate, state.decay[i])
+
 		// continue outputting samples for voices already in progress
 		for k, pos := range snd.voices {
 			if pos > 0 {
-				snd.voices[k] = sum(m.sum[0:], snd.buf, pos, gain)
+				snd.voices[k] = sum(m.sum[0:], snd.buf, pos, gain, env)
 			}
 		}
 		// check if a new sample should start in the current audio buffer
@@ -72,7 +75,7 @@ func (m *machine) process(state state, out []int16) {
 				for k, pos := range snd.voices {
 					if pos == 0 {
 						// multiply tick by 2 because sample buffer is stereo-interleaved
-						snd.voices[k] = sum(m.sum[tick*2:], snd.buf, 0, gain)
+						snd.voices[k] = sum(m.sum[tick*2:], snd.buf, 0, gain, env)
 						break
 					}
 				}
@@ -90,12 +93,22 @@ func (m *machine) process(state state, out []int16) {
 	}
 }
 
+func envDecay(sampleRate float64, decay time.Duration) func(int) float64 {
+	decaySamples := sampleRate * (float64(decay.Microseconds()) / float64(time.Second.Microseconds()))
+	return func(pos int) float64 {
+		if float64(pos) > decaySamples {
+			return 0
+		}
+		return float64(-pos)*(1.0/decaySamples) + 1
+	}
+}
+
 // sum adds samples from src to dst, starting at offset, and returns
 // the new src offset.
-func sum(dst, src []float64, offset int, gain float64) int {
+func sum(dst, src []float64, offset int, gain float64, env func(pos int) float64) int {
 	n := min(len(src)-offset, len(dst))
 	for i, sample := range src[offset : offset+n] {
-		dst[i] += sample * gain
+		dst[i] += sample * gain * env(offset+i)
 	}
 	offset += n
 	if offset >= len(src) {
