@@ -107,6 +107,15 @@ func (c *command) exec(s *session) error {
 		})
 	case "mute", "unmute":
 		s.update(func(st *state) { st.muted[i] = !st.muted[i] })
+	case "gain":
+		db, err := strconv.ParseFloat(c.args[1], 64)
+		if err != nil {
+			return err
+		}
+		if db > 6 {
+			return fmt.Errorf("can't gain by more than 6dB")
+		}
+		s.update(func(st *state) { st.gain[i] = db })
 	case "start":
 		return s.stream.Start()
 	case "stop":

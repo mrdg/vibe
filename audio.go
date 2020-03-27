@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"math"
 	"os"
 
 	wav "github.com/youpy/go-wav"
@@ -53,10 +54,11 @@ func (m *machine) process(state state, out []int16) {
 	tick := m.clock.tick(state)
 
 	for i, snd := range m.sounds {
+		gain := math.Pow(10, state.gain[i]/20.0)
 		// continue outputting samples for voices already in progress
 		for k, pos := range snd.voices {
 			if pos > 0 {
-				snd.voices[k] = sum(m.sum[0:], snd.buf, pos)
+				snd.voices[k] = sum(m.sum[0:], snd.buf, pos, gain)
 			}
 		}
 		// check if a new sample should start in the current audio buffer
@@ -70,7 +72,7 @@ func (m *machine) process(state state, out []int16) {
 				for k, pos := range snd.voices {
 					if pos == 0 {
 						// multiply tick by 2 because sample buffer is stereo-interleaved
-						snd.voices[k] = sum(m.sum[tick*2:], snd.buf, 0)
+						snd.voices[k] = sum(m.sum[tick*2:], snd.buf, 0, gain)
 						break
 					}
 				}
@@ -83,17 +85,17 @@ func (m *machine) process(state state, out []int16) {
 
 	// write samples to output buffer
 	for i, sample := range m.sum {
-		out[i] = int16(scale * sample * 0.7)
+		out[i] = int16(scale * sample)
 		m.sum[i] = 0.0
 	}
 }
 
 // sum adds samples from src to dst, starting at offset, and returns
 // the new src offset.
-func sum(dst, src []float64, offset int) int {
+func sum(dst, src []float64, offset int, gain float64) int {
 	n := min(len(src)-offset, len(dst))
 	for i, sample := range src[offset : offset+n] {
-		dst[i] += sample
+		dst[i] += sample * gain
 	}
 	offset += n
 	if offset >= len(src) {

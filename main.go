@@ -70,6 +70,7 @@ func main() {
 			stepSize:   stepSize,
 			muted:      make([]bool, len(samples)),
 			patterns:   patterns,
+			gain:       make([]float64, len(samples)),
 		},
 	}
 
@@ -120,6 +121,7 @@ type state struct {
 	patterns   [][]int // TODO: rename to sequence to avoid ambiguity with setp patterns
 	patternLen int
 	muted      []bool
+	gain       []float64 // gain in dB
 }
 
 type savedState struct {
