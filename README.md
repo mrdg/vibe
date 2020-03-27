@@ -2,6 +2,10 @@
 
 A drum machine / step sequencer.
 
+To try it out:
+
+    make run
+
 ```
 > setp A *                    # toggle every beat for sound A
 > setp A */*                  # toggle every 8th note
@@ -16,4 +20,6 @@ A drum machine / step sequencer.
 > clear B
 > bpm 130
 > beat 9/8
+> gain A -4                   # apply -4dB gain
+> decay A 200ms               # set amplitude decay for sound A to 200ms
 ```
