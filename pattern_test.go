@@ -5,16 +5,6 @@ import (
 	"testing"
 )
 
-func TestParse(t *testing.T) {
-	input := "1-3 // 1,2"
-	nodes, err := parsePattern(4, input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Log(nodes)
-	t.Log(nodes[0].next)
-}
-
 type exprTest struct {
 	root     node
 	timeSig  timeSig
