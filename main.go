@@ -60,6 +60,15 @@ func main() {
 		decay[i] = time.Second * 2
 	}
 
+	var probs [][]float64
+	for _ = range samples {
+		prob := make([]float64, patternLen)
+		for i := range prob {
+			prob[i] = 1.0
+		}
+		probs = append(probs, prob)
+	}
+
 	session := &session{
 		machine: &machine{
 			clock:  &clock{sampleRate: sampleRate},
@@ -78,6 +87,7 @@ func main() {
 			patterns:   patterns,
 			gain:       make([]float64, len(samples)),
 			decay:      decay,
+			probs:      probs,
 		},
 	}
 
@@ -130,6 +140,7 @@ type state struct {
 	muted      []bool
 	gain       []float64 // gain in dB
 	decay      []time.Duration
+	probs      [][]float64
 }
 
 type savedState struct {

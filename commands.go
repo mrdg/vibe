@@ -125,9 +125,31 @@ func (c *command) exec(s *session) error {
 			return fmt.Errorf("%v is out of range 5ms - 2s", d)
 		}
 		s.update(func(st *state) { st.decay[i] = d })
-	case "start":
+	case "prob":
+		p, err := strconv.ParseFloat(c.args[1], 64)
+		if err != nil {
+			return err
+		}
+		if p < 0.0 || p > 1.0 {
+			return fmt.Errorf("probability is out of range 0-1: %v", p)
+		}
+		nodes, err := parsePattern(s.state.timeSig, strings.Join(c.args[2:], " "))
+		if err != nil {
+			return err
+		}
+		node := nodes[0]
+		tmp := make([]int, s.state.patternLen)
+		node.sequence(s.state.timeSig, s.state.stepSize, tmp)
+		s.update(func(st *state) {
+			for j, v := range tmp {
+				if v > 0 {
+					st.probs[i][j] = p
+				}
+			}
+		})
+	case "play":
 		return s.stream.Start()
-	case "stop":
+	case "pause":
 		return s.stream.Stop()
 	default:
 		return fmt.Errorf("unsupported command: %v", c.name)

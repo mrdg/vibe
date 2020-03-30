@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"math"
+	"math/rand"
 	"os"
 	"time"
 
@@ -70,15 +71,20 @@ func (m *machine) process(state state, out []int16) {
 		}
 		pattern := state.patterns[i]
 		step := &state.steps[i]
+		prob := state.probs[i]
 		if *step >= len(pattern) {
 			*step = 0
 		}
 		if pattern[*step] != 0 && !state.muted[i] {
-			for k, pos := range snd.voices {
-				if pos == 0 {
-					// multiply tick by 2 because sample buffer is stereo-interleaved
-					snd.voices[k] = sum(m.sum[tick*2:], snd.buf, 0, gain, env)
-					break
+			rand.Seed(time.Now().UnixNano())
+			p := rand.Float64()
+			if p <= prob[*step] {
+				for k, pos := range snd.voices {
+					if pos == 0 {
+						// multiply tick by 2 because sample buffer is stereo-interleaved
+						snd.voices[k] = sum(m.sum[tick*2:], snd.buf, 0, gain, env)
+						break
+					}
 				}
 			}
 		}
