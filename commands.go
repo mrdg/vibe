@@ -8,153 +8,253 @@ import (
 	"time"
 )
 
-type command struct {
-	name string
-	args []string
+func clear(s *session, ids []int, args []string) error {
+	s.update(func(st *state) {
+		for _, id := range ids {
+			seq := make([]int, s.state.patternLen)
+			st.patterns[id] = seq
+		}
+	})
+	return nil
 }
 
-func parseCommand(line string) (command, error) {
-	var cmd command
-	parts := strings.Split(strings.TrimSpace(line), " ")
+func setp(s *session, ids []int, args []string) error {
+	id := ids[0]
+	seq := make([]int, s.state.patternLen)
+	nodes, err := parsePattern(s.state.timeSig, strings.Join(args, " "))
+	if err != nil {
+		return err
+	}
+	s.update(func(st *state) {
+		curr := st.patterns[id]
+		for _, node := range nodes {
+			tmp := make([]int, s.state.patternLen)
+			node.sequence(s.state.timeSig, s.state.stepSize, tmp)
+			for i, v := range tmp {
+				if v != 0 || curr[i] != 0 {
+					seq[i] = 1
+				}
+			}
+		}
+		st.patterns[id] = seq
+	})
+	return nil
+}
+
+func setn(s *session, ids []int, args []string) error {
+	id := ids[0]
+	var values []int
+	for _, arg := range args {
+		v, err := strconv.Atoi(arg)
+		if err != nil {
+			return err
+		}
+		if v > s.state.patternLen {
+			return fmt.Errorf("out of range: %v", v)
+		}
+		v--
+		values = append(values, v)
+	}
+	s.update(func(st *state) {
+		for _, val := range values {
+			st.patterns[id][val] = 1 - st.patterns[id][val]
+		}
+	})
+	return nil
+}
+
+func random(s *session, ids []int, args []string) error {
+	s.update(func(st *state) {
+		for _, id := range ids {
+			pattern := make([]int, s.state.patternLen)
+			for i := range pattern {
+				rand.Seed(time.Now().UnixNano())
+				pattern[i] = rand.Intn(2)
+			}
+			st.patterns[id] = pattern
+		}
+	})
+	return nil
+}
+
+func beat(s *session, ids []int, args []string) error {
+	timeSig, err := parseTimeSignature(args[0])
+	if err != nil {
+		return err
+	}
+	s.update(func(st *state) {
+		st.timeSig = timeSig
+		st.patternLen = (st.stepSize / timeSig.denom) * timeSig.num
+		for i := range st.patterns {
+			st.patterns[i] = make([]int, st.patternLen)
+		}
+	})
+	return nil
+}
+
+func prob(s *session, ids []int, args []string) error {
+	id := ids[0]
+	p, err := strconv.ParseFloat(args[0], 64)
+	if err != nil {
+		return err
+	}
+	if p < 0.0 || p > 1.0 {
+		return fmt.Errorf("probability is out of range 0-1: %v", p)
+	}
+	nodes, err := parsePattern(s.state.timeSig, strings.Join(args[1:], " "))
+	if err != nil {
+		return err
+	}
+	node := nodes[0]
+	tmp := make([]int, s.state.patternLen)
+	node.sequence(s.state.timeSig, s.state.stepSize, tmp)
+	s.update(func(st *state) {
+		for j, v := range tmp {
+			if v > 0 {
+				st.probs[id][j] = p
+			}
+		}
+	})
+	return nil
+}
+
+func decay(s *session, ids []int, args []string) error {
+	d, err := time.ParseDuration(args[0])
+	if err != nil {
+		return err
+	}
+	if d < time.Millisecond*5 || d > time.Second*2 {
+		return fmt.Errorf("%v is out of range 5ms - 2s", d)
+	}
+	s.update(func(st *state) { st.decay[ids[0]] = d })
+	return nil
+}
+
+func mute(s *session, ids []int, args []string) error {
+	s.update(func(st *state) {
+		for _, id := range ids {
+			st.muted[id] = !st.muted[id]
+		}
+	})
+	return nil
+}
+
+func gain(s *session, ids []int, args []string) error {
+	db, err := strconv.ParseFloat(args[0], 64)
+	if err != nil {
+		return err
+	}
+	if db > 6 {
+		return fmt.Errorf("can't gain by more than 6dB")
+	}
+	s.update(func(st *state) { st.gain[ids[0]] = db })
+	return nil
+}
+
+func bpm(s *session, ids []int, args []string) error {
+	bpm, err := strconv.Atoi(args[0])
+	if err != nil {
+		return err
+	}
+	s.update(func(st *state) { st.bpm = float64(bpm) })
+	return nil
+}
+
+func exec(s *session, command string) error {
+	parts := strings.Split(strings.TrimSpace(command), " ")
 	if len(parts) == 0 {
-		return cmd, fmt.Errorf("invalid command: %v", line)
+		return fmt.Errorf("invalid command: %v", command)
 	}
 	var args []string
 	if len(parts) > 1 {
 		args = parts[1:]
 	}
-	return command{
-		name: parts[0],
-		args: args,
-	}, nil
-}
+	name := parts[0]
 
-func (c *command) exec(s *session) error {
-	var i byte
-	switch c.name {
-	case "start", "stop":
-		break
-	default:
-		// Map from sound id ('A', 'B' ...) to index
-		i = c.args[0][0] - 65
-	}
+	for _, cmd := range commands {
+		if name != cmd.name {
+			continue
+		}
 
-	switch c.name {
-	case "clear":
-		seq := make([]int, s.state.patternLen)
-		s.update(func(st *state) { st.patterns[i] = seq })
-	case "setp":
-		seq := make([]int, s.state.patternLen)
-		nodes, err := parsePattern(s.state.timeSig, strings.Join(c.args[1:], " "))
+		ids, err := parseSoundIDs(s, args, cmd.ids)
 		if err != nil {
 			return err
 		}
-		s.update(func(st *state) {
-			curr := st.patterns[i]
-			for _, node := range nodes {
-				tmp := make([]int, s.state.patternLen)
-				node.sequence(s.state.timeSig, s.state.stepSize, tmp)
-				for i, v := range tmp {
-					if v != 0 || curr[i] != 0 {
-						seq[i] = 1
-					}
-				}
-			}
-			st.patterns[i] = seq
-		})
-	case "setn":
-		var values []int
-		for _, arg := range c.args[1:] {
-			v, err := strconv.Atoi(arg)
-			if err != nil {
-				return err
-			}
-			if v > s.state.patternLen {
-				return fmt.Errorf("out of range: %v", v)
-			}
-			v--
-			values = append(values, v)
+		args = args[len(ids):]
+		if len(args) < cmd.minArgs {
+			return fmt.Errorf("%s: not enough args: %v", cmd.name, args)
 		}
-		s.update(func(st *state) {
-			for _, val := range values {
-				st.patterns[i][val] = 1 - st.patterns[i][val]
-			}
-		})
-	case "bpm":
-		bpm, err := strconv.Atoi(c.args[0])
-		if err != nil {
+		if err := cmd.run(s, ids, args); err != nil {
 			return err
 		}
-		s.update(func(st *state) { st.bpm = float64(bpm) })
-	case "rand":
-		pattern := make([]int, s.state.patternLen)
-		for i := range pattern {
-			rand.Seed(time.Now().UnixNano())
-			pattern[i] = rand.Intn(2)
-		}
-		s.update(func(st *state) { st.patterns[i] = pattern })
-	case "beat":
-		timeSig, err := parseTimeSignature(c.args[0])
-		if err != nil {
-			return err
-		}
-		s.update(func(st *state) {
-			st.timeSig = timeSig
-			st.patternLen = (st.stepSize / timeSig.denom) * timeSig.num
-			for i := range st.patterns {
-				st.patterns[i] = make([]int, st.patternLen)
-			}
-		})
-	case "mute", "unmute":
-		s.update(func(st *state) { st.muted[i] = !st.muted[i] })
-	case "gain":
-		db, err := strconv.ParseFloat(c.args[1], 64)
-		if err != nil {
-			return err
-		}
-		if db > 6 {
-			return fmt.Errorf("can't gain by more than 6dB")
-		}
-		s.update(func(st *state) { st.gain[i] = db })
-	case "decay":
-		d, err := time.ParseDuration(c.args[1])
-		if err != nil {
-			return err
-		}
-		if d < time.Millisecond*5 || d > time.Second*2 {
-			return fmt.Errorf("%v is out of range 5ms - 2s", d)
-		}
-		s.update(func(st *state) { st.decay[i] = d })
-	case "prob":
-		p, err := strconv.ParseFloat(c.args[1], 64)
-		if err != nil {
-			return err
-		}
-		if p < 0.0 || p > 1.0 {
-			return fmt.Errorf("probability is out of range 0-1: %v", p)
-		}
-		nodes, err := parsePattern(s.state.timeSig, strings.Join(c.args[2:], " "))
-		if err != nil {
-			return err
-		}
-		node := nodes[0]
-		tmp := make([]int, s.state.patternLen)
-		node.sequence(s.state.timeSig, s.state.stepSize, tmp)
-		s.update(func(st *state) {
-			for j, v := range tmp {
-				if v > 0 {
-					st.probs[i][j] = p
-				}
-			}
-		})
-	case "play":
-		return s.stream.Start()
-	case "pause":
-		return s.stream.Stop()
-	default:
-		return fmt.Errorf("unsupported command: %v", c.name)
 	}
 	return nil
+}
+
+type command struct {
+	name    string
+	help    string
+	run     func(s *session, ids []int, args []string) error
+	ids     int // number of ids expected
+	minArgs int // min. number of non-id args expected
+}
+
+var commands = []command{
+	{
+		name: "clear",
+		run:  clear,
+		ids:  -1,
+	},
+	{
+		name:    "setp",
+		run:     setp,
+		ids:     1,
+		minArgs: 1,
+	},
+	{
+		name:    "setn",
+		run:     setn,
+		ids:     1,
+		minArgs: 1,
+	},
+	{
+		name: "rand",
+		run:  random,
+		ids:  -1,
+	},
+	{
+		name:    "beat",
+		run:     random,
+		minArgs: 1,
+	},
+	{
+		name:    "prob",
+		run:     prob,
+		ids:     1,
+		minArgs: 2,
+	},
+	{
+		name:    "bpm",
+		run:     bpm,
+		minArgs: 1,
+	},
+	{
+		name: "mute",
+		run:  mute,
+		ids:  -1,
+	},
+	{
+		name:    "gain",
+		run:     gain,
+		ids:     1,
+		minArgs: 1,
+	},
+	{
+		name:    "decay",
+		run:     decay,
+		ids:     1,
+		minArgs: 1,
+	},
 }
 
 func parseTimeSignature(s string) (timeSig, error) {
@@ -172,4 +272,26 @@ func parseTimeSignature(s string) (timeSig, error) {
 		return t, fmt.Errorf("bad denominator %s: %s", parts[1], err)
 	}
 	return timeSig{num: num, denom: denom}, nil
+}
+
+func parseSoundIDs(s *session, args []string, max int) ([]int, error) {
+	if max == -1 {
+		max = len(args)
+	}
+	ids := make([]int, max)
+	for i := 0; i < max; i++ {
+		if len(args[i]) > 1 {
+			return nil, fmt.Errorf("not a valid sound id")
+		}
+		b := args[i][0]
+		if b < 65 || b > 65+27 {
+			return nil, fmt.Errorf("not a valid sound id")
+		}
+		id := int(b) - 65
+		if id >= len(s.state.samples) {
+			return nil, fmt.Errorf("sound id out of range")
+		}
+		ids[i] = id
+	}
+	return ids, nil
 }

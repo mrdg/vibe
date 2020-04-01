@@ -111,12 +111,9 @@ func main() {
 				os.Exit(1)
 			}
 		}
-		cmd, err := parseCommand(prompt.Text())
-		if err != nil {
+		if err := exec(session, prompt.Text()); err != nil {
 			fmt.Println(err)
-		}
-		if err := cmd.exec(session); err != nil {
-			fmt.Println(err)
+			continue
 		}
 	}
 }
