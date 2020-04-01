@@ -14,9 +14,16 @@ func renderState(state state, w io.Writer) {
 		icons = append(icons, numIcon(i))
 	}
 
-	const spacePerStep = 4
-	const maxSampleLen = 8
+	var maxSampleLen int
+	for _, sample := range state.samples {
+		sample = displayName(sample)
+		if len(sample) > maxSampleLen {
+			maxSampleLen = len(sample)
+		}
+	}
+	maxSampleLen += 1
 
+	const spacePerStep = 4
 	spacing := (state.stepSize/sig.denom)*spacePerStep - 1
 	numbers := strings.Join(icons, strings.Repeat(" ", spacing))
 	fmt.Fprintf(w, strings.Repeat(" ", maxSampleLen)+"   ♩  %s\n", numbers)
@@ -36,14 +43,13 @@ func renderState(state state, w io.Writer) {
 		}
 
 		sample := formatSampleName(state.samples[i], maxSampleLen)
-		id := "\033[32m" + string(i+int('A')) + "\033[0m"
+		id := colorize(string(i+int('A')), colorGreen)
 		fmt.Fprintf(w, "%s %s %s %s\n\n", id, sample, speaker, sb.String())
 	}
 }
 
 func formatSampleName(sample string, max int) string {
-	sample = filepath.Base(sample)
-	sample = sample[:len(sample)-len(filepath.Ext(sample))]
+	sample = displayName(sample)
 
 	if len(sample) > max {
 		sample = sample[:max-1]
@@ -52,7 +58,12 @@ func formatSampleName(sample string, max int) string {
 	if len(sample) < max {
 		sample += strings.Repeat(" ", max-len(sample))
 	}
-	return "\033[34m" + sample + "\033[0m"
+	return colorize(sample, colorBlue)
+}
+
+func displayName(filename string) string {
+	filename = filepath.Base(filename)
+	return filename[:len(filename)-len(filepath.Ext(filename))]
 }
 
 func numIcon(n int) string {
@@ -61,4 +72,16 @@ func numIcon(n int) string {
 	}
 	// https://www.unicode.org/emoji/charts/full-emoji-list.html#0030_fe0f_20e3
 	return string([]byte{48 + byte(n), 239, 184, 143, 226, 131, 163})
+}
+
+const (
+	colorBlack = iota + 30
+	colorRed
+	colorGreen
+	colorYellow
+	colorBlue
+)
+
+func colorize(text string, color int) string {
+	return fmt.Sprintf("\033[%dm%s\033[0m", color, text)
 }

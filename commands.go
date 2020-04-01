@@ -224,7 +224,7 @@ var commands = []command{
 	},
 	{
 		name:    "beat",
-		run:     random,
+		run:     beat,
 		minArgs: 1,
 	},
 	{
