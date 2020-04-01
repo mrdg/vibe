@@ -68,11 +68,18 @@ func main() {
 		probs = append(probs, prob)
 	}
 
+	var chokeGroups [][]int
+	for _ = range samples {
+		var group []int
+		chokeGroups = append(chokeGroups, group)
+	}
+
 	session := &session{
 		machine: &machine{
 			clock:  &clock{sampleRate: sampleRate},
 			sounds: sounds,
 			sum:    make([]float64, bufferSize*nChannels),
+			hits:   make([]int, len(samples)),
 		},
 		state: state{
 			bufferSize: bufferSize,
@@ -80,13 +87,13 @@ func main() {
 			timeSig:    timeSig,
 			samples:    samples,
 			patternLen: patternLen,
-			steps:      make([]int, len(samples)),
 			stepSize:   stepSize,
 			muted:      make([]bool, len(samples)),
 			patterns:   patterns,
 			gain:       make([]float64, len(samples)),
 			decay:      decay,
 			probs:      probs,
+			choke:      chokeGroups,
 		},
 	}
 
@@ -129,7 +136,7 @@ type state struct {
 	bpm        float64
 	timeSig    timeSig
 	samples    []string
-	steps      []int
+	step       int
 	stepSize   int
 	patterns   [][]int // TODO: rename to sequence to avoid ambiguity with setp patterns
 	patternLen int
@@ -137,6 +144,7 @@ type state struct {
 	gain       []float64 // gain in dB
 	decay      []float64 // decay in seconds
 	probs      [][]float64
+	choke      [][]int
 }
 
 type savedState struct {
@@ -148,7 +156,7 @@ type savedState struct {
 
 func (s *session) process(out []int16) {
 	s.mu.Lock()
-	s.machine.process(s.state, out)
+	s.machine.process(&s.state, out)
 	s.mu.Unlock()
 }
 

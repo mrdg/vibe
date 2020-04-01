@@ -25,7 +25,7 @@ type clock struct {
 
 // tick is called once for every audio callback. If the next tick falls within the current
 // audio buffer, its offset in the buffer is returned. Otherwise it returns -1
-func (c *clock) tick(state state) int {
+func (c *clock) tick(state state) (int, bool) {
 	// BPM is assumed to be specified as a quarter note value, i.e. ♩ = 120,
 	// regardless of the time signature. This seems to be what DAWs are doing
 	// as well.
@@ -41,78 +41,106 @@ func (c *clock) tick(state state) int {
 
 	if frame < state.bufferSize {
 		c.nextTick += tickDuration
-		return frame
+		return frame, true
 	}
-	return -1
+	return frame, false
 }
 
 type machine struct {
 	clock  *clock
 	sounds []*sound
 	sum    []float64
+	hits   []int
 }
 
-func (m *machine) process(state state, out []int16) {
-	tick := m.clock.tick(state)
+const chokeDecay = 0.05 // 50ms
+
+func (m *machine) process(state *state, out []int16) {
+	offset, tick := m.clock.tick(*state)
+
+	for i := range m.sounds {
+		pattern := state.patterns[i]
+		if pattern[state.step] != 0 { // muting doesn't affect hits currently
+			rand.Seed(time.Now().UnixNano())
+			if rand.Float64() <= state.probs[i][state.step] {
+				m.hits[i] = 1
+			}
+		}
+	}
 
 	for i, snd := range m.sounds {
 		gain := math.Pow(10, state.gain[i]/20.0)
-		env := envDecay(m.clock.sampleRate, state.decay[i])
 
-		// continue outputting samples for voices already in progress
-		for k, pos := range snd.voices {
-			if pos > 0 {
-				snd.voices[k] = sum(m.sum[0:], snd.buf, pos, gain, env)
-			}
-		}
-		// check if a new sample should start in the current audio buffer
-		if tick == -1 {
-			continue
-		}
-		pattern := state.patterns[i]
-		step := &state.steps[i]
-		prob := state.probs[i]
-		if *step >= len(pattern) {
-			*step = 0
-		}
-		if pattern[*step] != 0 && !state.muted[i] {
-			rand.Seed(time.Now().UnixNano())
-			p := rand.Float64()
-			if p <= prob[*step] {
-				for k, pos := range snd.voices {
-					if pos == 0 {
-						// multiply tick by 2 because sample buffer is stereo-interleaved
-						snd.voices[k] = sum(m.sum[tick*2:], snd.buf, 0, gain, env)
-						break
-					}
+		choked := false
+		if tick {
+			for _, other := range state.choke[i] {
+				if m.hits[other] != 0 {
+					choked = true
 				}
 			}
 		}
-		*step++
+
+		// continue to output samples for active voices
+		for _, voice := range snd.voices {
+			if voice.pos > 0 {
+				if choked && !voice.choked {
+					// set envelope to short decay to choke sound
+					voice.env.startSample = voice.pos + offset*2
+					voice.env.decaySamples = m.clock.sampleRate * chokeDecay
+					voice.choked = true
+				}
+				voice.pos = sum(m.sum[0:], snd.buf, voice.pos, gain, voice.env.value)
+			}
+		}
+
+		// trigger a new voice
+		if tick && m.hits[i] != 0 && !state.muted[i] {
+			voice := snd.findFreeVoice()
+			voice.env.startSample = 0
+			voice.env.decaySamples = m.clock.sampleRate * state.decay[i]
+			voice.choked = false
+			voice.pos = sum(m.sum[offset*2:], snd.buf, 0, gain, voice.env.value)
+		}
 	}
 
-	const scale = 1 << 15 // assumes 16 bit output
+	if tick {
+		state.step++
+		if state.step >= state.patternLen {
+			state.step = 0
+		}
+	}
+
+	for i := range m.hits {
+		m.hits[i] = 0
+	}
 
 	// write samples to output buffer
+	const scale = 1 << 15 // assumes 16 bit output
 	for i, sample := range m.sum {
 		out[i] = int16(scale * sample)
 		m.sum[i] = 0.0
 	}
 }
 
-func envDecay(sampleRate float64, decaySeconds float64) func(int) float64 {
-	decaySamples := sampleRate * decaySeconds
-	return func(pos int) float64 {
-		if float64(pos) > decaySamples {
-			return 0
-		}
-		return float64(-pos)*(1.0/decaySamples) + 1
+type envelope struct {
+	startSample  int
+	decaySamples float64
+}
+
+func (e *envelope) value(pos int) float64 {
+	if e.startSample == -1 || pos < e.startSample {
+		return 1.0
 	}
+	if float64(pos) > float64(e.startSample)+e.decaySamples {
+		return 0
+	}
+	start := float64(pos - e.startSample)
+	return -start*(1.0/e.decaySamples) + 1
 }
 
 // sum adds samples from src to dst, starting at offset, and returns
 // the new src offset.
-func sum(dst, src []float64, offset int, gain float64, env func(pos int) float64) int {
+func sum(dst, src []float64, offset int, gain float64, env func(int) float64) int {
 	n := min(len(src)-offset, len(dst))
 	for i, sample := range src[offset : offset+n] {
 		dst[i] += sample * gain * env(offset+i)
@@ -136,9 +164,23 @@ const maxVoices = 12
 type sound struct {
 	buf []float64
 
-	// voices keeps track of positions in buf to allow overlapping instances of
-	// the same sound. When 0, the voice is unused.
-	voices [maxVoices]int
+	// voices allow multiple instances of the same sound to overlap
+	voices []*voice
+}
+
+func (s sound) findFreeVoice() *voice {
+	for _, voice := range s.voices {
+		if voice.pos == 0 {
+			return voice
+		}
+	}
+	panic("no free voice found")
+}
+
+type voice struct {
+	pos    int
+	env    envelope
+	choked bool
 }
 
 func loadSound(path string) (*sound, error) {
@@ -150,6 +192,9 @@ func loadSound(path string) (*sound, error) {
 
 	r := wav.NewReader(f)
 	var snd sound
+	for i := 0; i < maxVoices; i++ {
+		snd.voices = append(snd.voices, &voice{})
+	}
 	for {
 		samples, err := r.ReadSamples()
 		if err == io.EOF {

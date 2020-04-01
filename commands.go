@@ -72,6 +72,11 @@ var commands = []command{
 		ids:     1,
 		minArgs: 1,
 	},
+	{
+		name: "choke",
+		run:  choke,
+		ids:  -1,
+	},
 }
 
 func clear(s *session, ids []int, args []string) error {
@@ -196,6 +201,24 @@ func decay(s *session, ids []int, args []string) error {
 	return nil
 }
 
+func choke(s *session, ids []int, args []string) error {
+	if len(ids) < 2 {
+		return fmt.Errorf("choke needs at least 2 args")
+	}
+	s.update(func(st *state) {
+		st.choke = make([][]int, len(st.samples))
+		for _, id := range ids {
+			st.choke[id] = nil
+			for _, other := range ids {
+				if id != other {
+					st.choke[id] = append(st.choke[id], other)
+				}
+			}
+		}
+	})
+	return nil
+}
+
 func mute(s *session, ids []int, args []string) error {
 	s.update(func(st *state) {
 		for _, id := range ids {
@@ -241,7 +264,6 @@ func exec(s *session, command string) error {
 		if name != cmd.name {
 			continue
 		}
-
 		ids, err := parseSoundIDs(s, args, cmd.ids)
 		if err != nil {
 			return err
