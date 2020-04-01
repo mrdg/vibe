@@ -8,6 +8,72 @@ import (
 	"time"
 )
 
+type command struct {
+	name    string
+	help    string
+	run     func(s *session, ids []int, args []string) error
+	ids     int // number of ids expected
+	minArgs int // min. number of non-id args expected
+}
+
+var commands = []command{
+	{
+		name: "clear",
+		run:  clear,
+		ids:  -1,
+	},
+	{
+		name:    "setp",
+		run:     setp,
+		ids:     1,
+		minArgs: 1,
+	},
+	{
+		name:    "setn",
+		run:     setn,
+		ids:     1,
+		minArgs: 1,
+	},
+	{
+		name: "rand",
+		run:  random,
+		ids:  -1,
+	},
+	{
+		name:    "beat",
+		run:     beat,
+		minArgs: 1,
+	},
+	{
+		name:    "prob",
+		run:     prob,
+		ids:     1,
+		minArgs: 2,
+	},
+	{
+		name:    "bpm",
+		run:     bpm,
+		minArgs: 1,
+	},
+	{
+		name: "mute",
+		run:  mute,
+		ids:  -1,
+	},
+	{
+		name:    "gain",
+		run:     gain,
+		ids:     1,
+		minArgs: 1,
+	},
+	{
+		name:    "decay",
+		run:     decay,
+		ids:     1,
+		minArgs: 1,
+	},
+}
+
 func clear(s *session, ids []int, args []string) error {
 	s.update(func(st *state) {
 		for _, id := range ids {
@@ -189,72 +255,6 @@ func exec(s *session, command string) error {
 		}
 	}
 	return nil
-}
-
-type command struct {
-	name    string
-	help    string
-	run     func(s *session, ids []int, args []string) error
-	ids     int // number of ids expected
-	minArgs int // min. number of non-id args expected
-}
-
-var commands = []command{
-	{
-		name: "clear",
-		run:  clear,
-		ids:  -1,
-	},
-	{
-		name:    "setp",
-		run:     setp,
-		ids:     1,
-		minArgs: 1,
-	},
-	{
-		name:    "setn",
-		run:     setn,
-		ids:     1,
-		minArgs: 1,
-	},
-	{
-		name: "rand",
-		run:  random,
-		ids:  -1,
-	},
-	{
-		name:    "beat",
-		run:     beat,
-		minArgs: 1,
-	},
-	{
-		name:    "prob",
-		run:     prob,
-		ids:     1,
-		minArgs: 2,
-	},
-	{
-		name:    "bpm",
-		run:     bpm,
-		minArgs: 1,
-	},
-	{
-		name: "mute",
-		run:  mute,
-		ids:  -1,
-	},
-	{
-		name:    "gain",
-		run:     gain,
-		ids:     1,
-		minArgs: 1,
-	},
-	{
-		name:    "decay",
-		run:     decay,
-		ids:     1,
-		minArgs: 1,
-	},
 }
 
 func parseTimeSignature(s string) (timeSig, error) {
