@@ -281,15 +281,16 @@ func parseSoundIDs(s *session, args []string, max int) ([]int, error) {
 	ids := make([]int, max)
 	for i := 0; i < max; i++ {
 		if len(args[i]) > 1 {
-			return nil, fmt.Errorf("not a valid sound id")
+			return nil, fmt.Errorf("not a valid sound id: %s", args[i])
 		}
-		b := args[i][0]
-		if b < 65 || b > 65+27 {
-			return nil, fmt.Errorf("not a valid sound id")
+		offset := int(args[i][0])
+		A := int('A')
+		if offset < A || offset > A+27 {
+			return nil, fmt.Errorf("not a valid sound id: %s", args[i])
 		}
-		id := int(b) - 65
+		id := offset - A
 		if id >= len(s.state.samples) {
-			return nil, fmt.Errorf("sound id out of range")
+			return nil, fmt.Errorf("not a valid sound id: %s", args[i])
 		}
 		ids[i] = id
 	}

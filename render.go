@@ -36,7 +36,7 @@ func renderState(state state, w io.Writer) {
 		}
 
 		sample := formatSampleName(state.samples[i], maxSampleLen)
-		id := "\033[32m" + string(i+65) + "\033[0m"
+		id := "\033[32m" + string(i+int('A')) + "\033[0m"
 		fmt.Fprintf(w, "%s %s %s %s\n\n", id, sample, speaker, sb.String())
 	}
 }
