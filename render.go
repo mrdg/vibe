@@ -67,11 +67,8 @@ func displayName(filename string) string {
 }
 
 func numIcon(n int) string {
-	if n < 0 || n > 9 {
-		panic("number out of range")
-	}
 	// https://www.unicode.org/emoji/charts/full-emoji-list.html#0030_fe0f_20e3
-	return string([]byte{48 + byte(n), 239, 184, 143, 226, 131, 163})
+	return string([]byte{48 + byte(n%10), 239, 184, 143, 226, 131, 163})
 }
 
 const (
