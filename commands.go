@@ -119,11 +119,11 @@ func prob(s *session, ids []int, args []string) error {
 }
 
 func decay(s *session, ids []int, args []string) error {
-	d, err := time.ParseDuration(args[0])
+	d, err := strconv.ParseFloat(args[0], 64)
 	if err != nil {
 		return err
 	}
-	if d < time.Millisecond*5 || d > time.Second*2 {
+	if d < 0.005 || d > 2 {
 		return fmt.Errorf("%v is out of range 5ms - 2s", d)
 	}
 	s.update(func(st *state) { st.decay[ids[0]] = d })

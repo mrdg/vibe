@@ -100,8 +100,8 @@ func (m *machine) process(state state, out []int16) {
 	}
 }
 
-func envDecay(sampleRate float64, decay time.Duration) func(int) float64 {
-	decaySamples := sampleRate * (float64(decay.Microseconds()) / float64(time.Second.Microseconds()))
+func envDecay(sampleRate float64, decaySeconds float64) func(int) float64 {
+	decaySamples := sampleRate * decaySeconds
 	return func(pos int) float64 {
 		if float64(pos) > decaySamples {
 			return 0

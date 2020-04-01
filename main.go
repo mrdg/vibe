@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/gordonklaus/portaudio"
 )
@@ -55,9 +54,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	decay := make([]time.Duration, len(samples))
+	decay := make([]float64, len(samples))
 	for i := range decay {
-		decay[i] = time.Second * 2
+		decay[i] = 2
 	}
 
 	var probs [][]float64
@@ -136,7 +135,7 @@ type state struct {
 	patternLen int
 	muted      []bool
 	gain       []float64 // gain in dB
-	decay      []time.Duration
+	decay      []float64 // decay in seconds
 	probs      [][]float64
 }
 
