@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/gordonklaus/portaudio"
@@ -17,6 +18,7 @@ func main() {
 		bpm   = flag.Float64("bpm", 120, "")
 		beat  = flag.String("beat", "7/8", "")
 		files = flag.String("samples", "*.wav", "")
+		run   = flag.String("run", "", "")
 	)
 	flag.Parse()
 
@@ -40,6 +42,21 @@ func main() {
 	var sounds []*sound
 	for _, sample := range samples {
 		sounds = append(sounds, mustLoadSound(sample))
+	}
+
+	var commands []string
+	if *run != "" {
+		f, err := os.Open(*run)
+		if err != nil {
+			log.Fatal(err)
+		}
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			commands = append(commands, strings.TrimSpace(scanner.Text()))
+		}
+		if err := scanner.Err(); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	patternLen := (stepSize / timeSig.denom) * timeSig.num
@@ -105,6 +122,12 @@ func main() {
 
 	if err := stream.Start(); err != nil {
 		log.Fatal(err)
+	}
+
+	for _, cmd := range commands {
+		if err := exec(session, cmd); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	prompt := bufio.NewScanner(os.Stdin)

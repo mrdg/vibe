@@ -1,0 +1,11 @@
+bpm 130
+beat 5/4
+choke F C
+gain F -10
+setp F */2
+setp C *//1,2,4
+setn C 20
+setp A *
+decay G .6
+gain G -3
+setp G 2,4 | 4//4
