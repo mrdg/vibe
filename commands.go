@@ -275,8 +275,9 @@ func exec(s *session, command string) error {
 		if err := cmd.run(s, ids, args); err != nil {
 			return err
 		}
+		return nil
 	}
-	return nil
+	return fmt.Errorf("unknown command: %s", name)
 }
 
 func parseTimeSignature(s string) (timeSig, error) {
