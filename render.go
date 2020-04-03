@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -25,27 +26,44 @@ func renderState(state state, w io.Writer) {
 
 	const spacePerStep = 4
 	spacing := (state.stepSize/sig.denom)*spacePerStep - 1
-	numbers := strings.Join(icons, strings.Repeat(" ", spacing))
-	fmt.Fprintf(w, strings.Repeat(" ", maxSampleLen)+"   ♩  %s\n", numbers)
+	beats := strings.Join(icons, strings.Repeat(" ", spacing))
+	fmt.Fprintf(w, strings.Repeat(" ", maxSampleLen)+"   ♩  %s\n", beats)
+
 	for i, pattern := range state.patterns {
 		speaker := "🔈"
 		if state.muted[i] {
 			speaker = "🔇"
 		}
 
-		var sb strings.Builder
+		var steps string
 		for _, v := range pattern {
 			step := "⬜️"
 			if v > 0 {
 				step = "⬛️"
 			}
-			sb.WriteString(step + "  ")
+			steps += step + "  "
 		}
 
 		sample := formatSampleName(state.samples[i], maxSampleLen)
 		id := colorize(string(i+int('A')), colorGreen)
-		fmt.Fprintf(w, "%s %s %s %s\n\n", id, sample, speaker, sb.String())
+		row := fmt.Sprintf("%s %s %s %s\n", id, sample, speaker, steps)
+		if i < len(state.patterns)-1 {
+			row += "\n"
+		}
+		fmt.Fprintf(w, row)
 	}
+
+	var numbers string
+	for step := 1; step <= state.patternLen; step++ {
+		space := spacePerStep - 2
+		if step < 9 {
+			space++
+		}
+		numbers += strconv.Itoa(step) + strings.Repeat(" ", space)
+	}
+	numbers = colorize(numbers, colorMagenta)
+	numbers = strings.Repeat(" ", maxSampleLen) + "       " + numbers + "\n"
+	fmt.Fprintf(w, numbers)
 }
 
 func formatSampleName(sample string, max int) string {
@@ -77,6 +95,7 @@ const (
 	colorGreen
 	colorYellow
 	colorBlue
+	colorMagenta
 )
 
 func colorize(text string, color int) string {
