@@ -66,6 +66,20 @@ func TestParse(t *testing.T) {
 				},
 			},
 		},
+		{
+			input: `load "a/file.wav"`,
+			want: Command{
+				Name: Identifier("load"),
+				Args: []Node{String("a/file.wav")},
+			},
+		},
+		{
+			input: `load ""`,
+			want: Command{
+				Name: Identifier("load"),
+				Args: []Node{String("")},
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Log(test.input)

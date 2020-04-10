@@ -12,6 +12,7 @@ type Node interface {
 func (Identifier) isNode() {}
 func (Int) isNode()        {}
 func (Float) isNode()      {}
+func (String) isNode()     {}
 func (MatchExpr) isNode()  {}
 
 type Command struct {
@@ -22,6 +23,7 @@ type Command struct {
 type Identifier string
 type Int int
 type Float float64
+type String string
 type MatchExpr struct {
 	matchers []matchItem
 }
@@ -68,6 +70,8 @@ func (p *parser) parse() (Command, error) {
 		switch token.typ {
 		case typeIdentifier:
 			arg = Identifier(token.text)
+		case typeString:
+			arg = String(token.text[1 : len(token.text)-1])
 		case typeFloat:
 			f, err := strconv.ParseFloat(token.text, 64)
 			if err != nil {

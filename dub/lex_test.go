@@ -63,6 +63,15 @@ func TestLexer(t *testing.T) {
 				token{typ: typeEOF},
 			},
 		},
+		{
+			input: `command "this is a string" 1`,
+			expect: []token{
+				token{typ: typeIdentifier, text: "command"},
+				token{typ: typeString, text: `"this is a string"`},
+				token{typ: typeInt, text: "1"},
+				token{typ: typeEOF},
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Log(test.input)

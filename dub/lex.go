@@ -14,6 +14,7 @@ const (
 	typeInt
 	typeFloat
 	typeIdentifier
+	typeString
 	typeQuote
 	typeComma
 	typeColon
@@ -66,6 +67,8 @@ func (l *lexer) lex() ([]token, error) {
 			l.lexIdentifier()
 		case l.isNumber(r):
 			l.lexNumber()
+		case r == '"':
+			l.lexString()
 		case r == ' ':
 			l.ignoreSpace()
 		default:
@@ -153,6 +156,19 @@ func (l *lexer) lexIdentifier() {
 				l.invalidChar(r)
 			}
 			return
+		}
+	}
+}
+
+func (l *lexer) lexString() {
+	for {
+		switch r := l.next(); {
+		case r == '"':
+			l.yieldToken(typeString)
+			return
+		case r == eof:
+			l.invalidChar(r)
+		default:
 		}
 	}
 }
