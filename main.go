@@ -18,7 +18,7 @@ func main() {
 	var (
 		bpm   = flag.Float64("bpm", 120, "")
 		beat  = flag.String("beat", "7/8", "")
-		files = flag.String("samples", "*.wav", "")
+		files = flag.String("sounds", "*.wav", "")
 		run   = flag.String("run", "", "")
 	)
 	flag.Parse()
@@ -35,14 +35,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	samples, err := filepath.Glob(*files)
+	patternLen := (stepSize / timeSig.denom) * timeSig.num
+
+	soundFiles, err := filepath.Glob(*files)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	var sounds []*sound
-	for _, sample := range samples {
-		sounds = append(sounds, mustLoadSound(sample))
+	for _, file := range soundFiles {
+		sounds = append(sounds, mustLoadSound(file, patternLen))
 	}
 
 	var commands []string
@@ -60,58 +62,23 @@ func main() {
 		}
 	}
 
-	patternLen := (stepSize / timeSig.denom) * timeSig.num
-
-	var patterns [][]int
-	for _ = range samples {
-		p := make([]int, patternLen)
-		patterns = append(patterns, p)
-	}
-
 	if err := portaudio.Initialize(); err != nil {
 		log.Fatal(err)
 	}
 
-	decay := make([]float64, len(samples))
-	for i := range decay {
-		decay[i] = 2
-	}
-
-	var probs [][]float64
-	for _ = range samples {
-		prob := make([]float64, patternLen)
-		for i := range prob {
-			prob[i] = 1.0
-		}
-		probs = append(probs, prob)
-	}
-
-	var chokeGroups [][]int
-	for _ = range samples {
-		var group []int
-		chokeGroups = append(chokeGroups, group)
-	}
-
 	session := &session{
 		machine: &machine{
-			clock:  &clock{sampleRate: sampleRate},
-			sounds: sounds,
-			sum:    make([]float64, bufferSize*nChannels),
-			hits:   make([]int, len(samples)),
+			clock: &clock{sampleRate: sampleRate},
+			sum:   make([]float64, bufferSize*nChannels),
+			hits:  make([]int, len(soundFiles)),
 		},
 		state: state{
 			bufferSize: bufferSize,
 			bpm:        *bpm,
 			timeSig:    timeSig,
-			samples:    samples,
+			sounds:     sounds,
 			patternLen: patternLen,
 			stepSize:   stepSize,
-			muted:      make([]bool, len(samples)),
-			patterns:   patterns,
-			gain:       make([]float64, len(samples)),
-			decay:      decay,
-			probs:      probs,
-			choke:      chokeGroups,
 		},
 	}
 
@@ -152,16 +119,10 @@ type state struct {
 	bufferSize int
 	bpm        float64
 	timeSig    timeSig
-	samples    []string // TODO: rename this sounds to avoid ambiguity with samples?
+	sounds     []*sound
 	step       int
 	stepSize   int
-	patterns   [][]int // TODO: rename to sequence to avoid ambiguity with setp patterns
 	patternLen int
-	muted      []bool
-	gain       []float64 // gain in dB
-	decay      []float64 // decay in seconds
-	probs      [][]float64
-	choke      [][]int
 }
 
 type savedState struct {

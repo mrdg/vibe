@@ -3,9 +3,7 @@ package main
 import (
 	"io"
 	"math"
-	"math/rand"
 	"os"
-	"time"
 
 	wav "github.com/youpy/go-wav"
 )
@@ -47,10 +45,8 @@ func (c *clock) tick(state state) (int, bool) {
 }
 
 type machine struct {
-	clock  *clock
-	sounds []*sound
-	sum    []float64
-	hits   []int
+	clock *clock
+	sum   []float64
 }
 
 const chokeDecay = 0.05 // 50ms
@@ -58,26 +54,16 @@ const chokeDecay = 0.05 // 50ms
 func (m *machine) process(state *state, out []float32) {
 	offset, tick := m.clock.tick(*state)
 
-	for i := range m.sounds {
-		pattern := state.patterns[i]
+	for _, snd := range state.sounds {
 		if state.step >= state.patternLen {
 			state.step = 0
 		}
-		if pattern[state.step] != 0 { // muting doesn't affect hits currently
-			rand.Seed(time.Now().UnixNano())
-			if rand.Float64() <= state.probs[i][state.step] {
-				m.hits[i] = 1
-			}
-		}
-	}
-
-	for i, snd := range m.sounds {
-		gain := math.Pow(10, state.gain[i]/20.0)
+		gain := math.Pow(10, snd.gain/20.0)
 
 		choked := false
 		if tick {
-			for _, other := range state.choke[i] {
-				if m.hits[other] != 0 {
+			for _, other := range snd.chokeGroup {
+				if other.pattern[state.step] != 0 {
 					choked = true
 				}
 			}
@@ -97,10 +83,10 @@ func (m *machine) process(state *state, out []float32) {
 		}
 
 		// trigger a new voice
-		if tick && m.hits[i] != 0 && !state.muted[i] {
+		if tick && snd.pattern[state.step] != 0 && !snd.muted {
 			voice := snd.findFreeVoice()
 			voice.env.startSample = 0
-			voice.env.decaySamples = m.clock.sampleRate * state.decay[i]
+			voice.env.decaySamples = m.clock.sampleRate * snd.decay
 			voice.choked = false
 			voice.pos = sum(m.sum[offset*2:], snd.buf, 0, gain, voice.env.value)
 		}
@@ -164,10 +150,19 @@ func min(x, y int) int {
 const maxVoices = 12
 
 type sound struct {
-	buf []float64
+	file string
+	buf  []float64
 
 	// voices allow multiple instances of the same sound to overlap
 	voices []*voice
+
+	pattern []int
+	probs   []float64
+	muted   bool
+	gain    float64 // in dB
+	decay   float64 // seconds
+
+	chokeGroup []*sound
 }
 
 func (s sound) findFreeVoice() *voice {
@@ -185,7 +180,7 @@ type voice struct {
 	choked bool
 }
 
-func loadSound(path string) (*sound, error) {
+func loadSound(path string, patternLen int) (*sound, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -193,7 +188,16 @@ func loadSound(path string) (*sound, error) {
 	defer f.Close()
 
 	r := wav.NewReader(f)
-	var snd sound
+	snd := sound{
+		file:    path,
+		decay:   2,
+		gain:    1.,
+		pattern: make([]int, patternLen),
+		probs:   make([]float64, patternLen),
+	}
+	for i := range snd.probs {
+		snd.probs[i] = 1.
+	}
 	for i := 0; i < maxVoices; i++ {
 		snd.voices = append(snd.voices, &voice{})
 	}
@@ -214,8 +218,8 @@ func loadSound(path string) (*sound, error) {
 	return &snd, nil
 }
 
-func mustLoadSound(path string) *sound {
-	snd, err := loadSound(path)
+func mustLoadSound(path string, patternLen int) *sound {
+	snd, err := loadSound(path, patternLen)
 	if err != nil {
 		panic(err)
 	}

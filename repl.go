@@ -26,21 +26,20 @@ var builtins = []command{
 
 type command struct {
 	name      string
-	run       func(*session, []int, []dub.Node) error
+	run       func(*session, []*sound, []dub.Node) error
 	soundArgs int
 }
 
-func clear(s *session, sounds []int, args []dub.Node) error {
+func clear(s *session, sounds []*sound, args []dub.Node) error {
 	s.update(func(st *state) {
-		for _, i := range sounds {
-			seq := make([]int, s.state.patternLen)
-			st.patterns[i] = seq
+		for _, snd := range sounds {
+			snd.pattern = make([]int, st.patternLen)
 		}
 	})
 	return nil
 }
 
-func decay(s *session, sounds []int, args []dub.Node) error {
+func decay(s *session, sounds []*sound, args []dub.Node) error {
 	d, err := floatArg(args, 0)
 	if err != nil {
 		return err
@@ -48,11 +47,11 @@ func decay(s *session, sounds []int, args []dub.Node) error {
 	if d < 0.005 || d > 2 {
 		return fmt.Errorf("%v is out of range 5ms - 2s", d)
 	}
-	s.update(func(st *state) { st.decay[sounds[0]] = d })
+	s.update(func(st *state) { sounds[0].decay = d })
 	return nil
 }
 
-func bpm(s *session, sounds []int, args []dub.Node) error {
+func bpm(s *session, sounds []*sound, args []dub.Node) error {
 	bpm, err := intArg(args, 0)
 	if err != nil {
 		return err
@@ -61,16 +60,16 @@ func bpm(s *session, sounds []int, args []dub.Node) error {
 	return nil
 }
 
-func mute(s *session, sounds []int, args []dub.Node) error {
+func mute(s *session, sounds []*sound, args []dub.Node) error {
 	s.update(func(st *state) {
-		for _, i := range sounds {
-			st.muted[i] = !st.muted[i]
+		for _, snd := range sounds {
+			snd.muted = !snd.muted
 		}
 	})
 	return nil
 }
 
-func beat(s *session, sounds []int, args []dub.Node) error {
+func beat(s *session, sounds []*sound, args []dub.Node) error {
 	num, err := intArg(args, 0)
 	if err != nil {
 		return err
@@ -82,40 +81,49 @@ func beat(s *session, sounds []int, args []dub.Node) error {
 	s.update(func(st *state) {
 		st.timeSig = timeSig{num: int(num), denom: int(denom)}
 		st.patternLen = (st.stepSize / st.timeSig.denom) * st.timeSig.num
-		for i := range st.patterns {
-			st.patterns[i] = make([]int, st.patternLen)
+
+		for _, snd := range st.sounds {
+			diff := len(snd.pattern) - st.patternLen
+			switch {
+			case diff > 0:
+				snd.pattern = snd.pattern[:st.patternLen]
+			case diff < 0:
+				tmp := snd.pattern
+				snd.pattern = make([]int, st.patternLen)
+				for i, v := range tmp {
+					snd.pattern[i] = v
+				}
+			}
 			prob := make([]float64, st.patternLen)
 			for j := range prob {
 				prob[j] = 1.0
 			}
-			st.probs[i] = prob
+			snd.probs = prob
 		}
 	})
 	return nil
 }
 
-func random(s *session, sounds []int, args []dub.Node) error {
+func random(s *session, sounds []*sound, args []dub.Node) error {
 	s.update(func(st *state) {
-		for _, id := range sounds {
-			pattern := make([]int, s.state.patternLen)
-			for i := range pattern {
+		for _, snd := range sounds {
+			for i := range snd.pattern {
 				rand.Seed(time.Now().UnixNano())
-				pattern[i] = rand.Intn(2)
+				snd.pattern[i] = rand.Intn(2)
 			}
-			st.patterns[id] = pattern
 		}
 	})
 	return nil
 }
 
-func choke(s *session, sounds []int, args []dub.Node) error {
+func choke(s *session, sounds []*sound, args []dub.Node) error {
 	s.update(func(st *state) {
-		st.choke = make([][]int, len(st.samples))
-		for _, id := range sounds {
-			st.choke[id] = nil
+		st.chokeGroups = make([][]int, len(st.sounds))
+		for _, snd := range sounds {
+			snd.chokeGroup = nil
 			for _, other := range sounds {
-				if id != other {
-					st.choke[id] = append(st.choke[id], other)
+				if snd != other {
+					snd.chokeGroup = append(snd.chokeGroup, other)
 				}
 			}
 		}
@@ -123,7 +131,7 @@ func choke(s *session, sounds []int, args []dub.Node) error {
 	return nil
 }
 
-func gain(s *session, sounds []int, args []dub.Node) error {
+func gain(s *session, sounds []*sound, args []dub.Node) error {
 	db, err := floatArg(args, 0)
 	if err != nil {
 		return err
@@ -131,7 +139,7 @@ func gain(s *session, sounds []int, args []dub.Node) error {
 	if db > 6 {
 		return fmt.Errorf("can't gain by more than 6dB")
 	}
-	s.update(func(st *state) { st.gain[sounds[0]] = db })
+	s.update(func(st *state) { sounds[0].gain = db })
 	return nil
 }
 
@@ -159,7 +167,7 @@ func repl(session *session, input io.Reader) error {
 
 func eval(s *session, cmd dub.Command) error {
 	if len(cmd.Name) == 1 {
-		id, err := soundIndex(s, cmd.Name)
+		snd, err := getSound(s, cmd.Name)
 		if err != nil {
 			return err
 		}
@@ -173,10 +181,9 @@ func eval(s *session, cmd dub.Command) error {
 					return err
 				}
 				s.update(func(st *state) {
-					current := st.patterns[id]
 					for i, v := range seq {
-						if current[i] != 0 || v != 0 {
-							current[i] = 1
+						if snd.pattern[i] != 0 || v != 0 {
+							snd.pattern[i] = 1
 						}
 					}
 				})
@@ -184,8 +191,8 @@ func eval(s *session, cmd dub.Command) error {
 				s.update(func(st *state) {
 					step := val
 					step--
-					if int(step) < len(st.patterns[id]) {
-						st.patterns[id][step] = 1 - st.patterns[id][step]
+					if int(step) < len(snd.pattern) {
+						snd.pattern[step] = 1 - snd.pattern[step]
 					}
 				})
 			default:
@@ -211,23 +218,23 @@ func eval(s *session, cmd dub.Command) error {
 	}
 }
 
-func soundIndex(s *session, identifier dub.Identifier) (int, error) {
+func getSound(s *session, identifier dub.Identifier) (*sound, error) {
 	// TODO: sound identifiers are just assumed to be single letters for now
 	ident := strings.ToLower(string(identifier))
 	offset := int(ident[0])
 	a := int('a')
 	id := offset - a
-	if offset < a || offset > a+27 || id >= len(s.state.samples) {
-		return id, fmt.Errorf("not a valid sound id: %s", identifier)
+	if offset < a || offset > a+27 || id >= len(s.state.sounds) {
+		return nil, fmt.Errorf("not a valid sound id: %s", identifier)
 	}
-	return id, nil
+	return s.state.sounds[id], nil
 }
 
-func resolveSounds(s *session, args []dub.Node, count int) ([]int, error) {
+func resolveSounds(s *session, args []dub.Node, count int) ([]*sound, error) {
 	if count == -1 {
 		count = len(args)
 	}
-	var ids []int
+	var sounds []*sound
 	for i, arg := range args {
 		if i >= count {
 			break
@@ -236,13 +243,13 @@ func resolveSounds(s *session, args []dub.Node, count int) ([]int, error) {
 		if !ok {
 			return nil, fmt.Errorf("expected identifier")
 		}
-		id, err := soundIndex(s, identifier)
+		snd, err := getSound(s, identifier)
 		if err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		sounds = append(sounds, snd)
 	}
-	return ids, nil
+	return sounds, nil
 }
 
 func parseTimeSignature(s string) (timeSig, error) {

@@ -15,28 +15,28 @@ func renderState(state state, w io.Writer) {
 		icons = append(icons, numIcon(i))
 	}
 
-	var maxSampleLen int
-	for _, sample := range state.samples {
-		sample = displayName(sample)
-		if len(sample) > maxSampleLen {
-			maxSampleLen = len(sample)
+	var maxNameLen int
+	for _, snd := range state.sounds {
+		name := displayName(snd.file)
+		if len(name) > maxNameLen {
+			maxNameLen = len(name)
 		}
 	}
-	maxSampleLen += 1
+	maxNameLen += 1
 
 	const spacePerStep = 4
 	spacing := (state.stepSize/sig.denom)*spacePerStep - 1
 	beats := strings.Join(icons, strings.Repeat(" ", spacing))
-	fmt.Fprintf(w, strings.Repeat(" ", maxSampleLen)+"   ♩  %s\n", beats)
+	fmt.Fprintf(w, strings.Repeat(" ", maxNameLen)+"   ♩  %s\n", beats)
 
-	for i, pattern := range state.patterns {
+	for i, snd := range state.sounds {
 		speaker := "🔈"
-		if state.muted[i] {
+		if snd.muted {
 			speaker = "🔇"
 		}
 
 		var steps string
-		for _, v := range pattern {
+		for _, v := range snd.pattern {
 			step := "⬜️"
 			if v > 0 {
 				step = "⬛️"
@@ -44,10 +44,10 @@ func renderState(state state, w io.Writer) {
 			steps += step + "  "
 		}
 
-		sample := formatSampleName(state.samples[i], maxSampleLen)
+		sample := formatSampleName(snd.file, maxNameLen)
 		id := colorize(string(i+int('a')), colorGreen)
 		row := fmt.Sprintf("%s %s %s %s\n", id, sample, speaker, steps)
-		if i < len(state.patterns)-1 {
+		if i < len(state.sounds)-1 {
 			row += "\n"
 		}
 		fmt.Fprintf(w, row)
@@ -62,7 +62,7 @@ func renderState(state state, w io.Writer) {
 		numbers += strconv.Itoa(step) + strings.Repeat(" ", space)
 	}
 	numbers = colorize(numbers, colorMagenta)
-	numbers = strings.Repeat(" ", maxSampleLen) + "       " + numbers + "\n"
+	numbers = strings.Repeat(" ", maxNameLen) + "       " + numbers + "\n"
 	fmt.Fprintf(w, numbers)
 }
 
