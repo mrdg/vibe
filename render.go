@@ -45,7 +45,7 @@ func renderState(state state, w io.Writer) {
 		}
 
 		sample := formatSampleName(state.samples[i], maxSampleLen)
-		id := colorize(string(i+int('A')), colorGreen)
+		id := colorize(string(i+int('a')), colorGreen)
 		row := fmt.Sprintf("%s %s %s %s\n", id, sample, speaker, steps)
 		if i < len(state.patterns)-1 {
 			row += "\n"

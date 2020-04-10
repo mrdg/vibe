@@ -55,11 +55,14 @@ type machine struct {
 
 const chokeDecay = 0.05 // 50ms
 
-func (m *machine) process(state *state, out []int16) {
+func (m *machine) process(state *state, out []float32) {
 	offset, tick := m.clock.tick(*state)
 
 	for i := range m.sounds {
 		pattern := state.patterns[i]
+		if state.step >= state.patternLen {
+			state.step = 0
+		}
 		if pattern[state.step] != 0 { // muting doesn't affect hits currently
 			rand.Seed(time.Now().UnixNano())
 			if rand.Float64() <= state.probs[i][state.step] {
@@ -115,9 +118,8 @@ func (m *machine) process(state *state, out []int16) {
 	}
 
 	// write samples to output buffer
-	const scale = 1 << 15 // assumes 16 bit output
 	for i, sample := range m.sum {
-		out[i] = int16(scale * sample)
+		out[i] = float32(sample)
 		m.sum[i] = 0.0
 	}
 }

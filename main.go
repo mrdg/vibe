@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/gordonklaus/portaudio"
+	"github.com/mrdg/ringo/dub"
 )
 
 func main() {
@@ -124,26 +125,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	for _, cmd := range commands {
-		if err := exec(session, cmd); err != nil {
+	for _, line := range commands {
+		cmd, err := dub.Parse(line)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := eval(session, cmd); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	prompt := bufio.NewScanner(os.Stdin)
-	for {
-		renderState(session.state, os.Stdout)
-		fmt.Printf("> ")
-		if !prompt.Scan() {
-			if err := prompt.Err(); err != nil {
-				fmt.Print(err)
-				os.Exit(1)
-			}
-		}
-		if err := exec(session, prompt.Text()); err != nil {
-			fmt.Println(err)
-			continue
-		}
+	if err := repl(session, os.Stdin); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 }
 
@@ -158,7 +152,7 @@ type state struct {
 	bufferSize int
 	bpm        float64
 	timeSig    timeSig
-	samples    []string
+	samples    []string // TODO: rename this sounds to avoid ambiguity with samples?
 	step       int
 	stepSize   int
 	patterns   [][]int // TODO: rename to sequence to avoid ambiguity with setp patterns
@@ -177,7 +171,7 @@ type savedState struct {
 	}
 }
 
-func (s *session) process(out []int16) {
+func (s *session) process(out []float32) {
 	s.mu.Lock()
 	s.machine.process(&s.state, out)
 	s.mu.Unlock()

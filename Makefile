@@ -1,5 +1,8 @@
-run: ringo
-	./ringo -bpm 130 -samples "samples/*.wav" -beat 5/4 -run samples/commands.txt
+demo run: ringo
+	./ringo -samples "demo/*.wav" -run demo/commands.txt
 
-ringo: $(wildcard *.go)
+ringo: $(wildcard *.go dub/*.go)
 	go build
+
+test:
+	go test ./...
