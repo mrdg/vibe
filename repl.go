@@ -16,18 +16,49 @@ import (
 var builtins = []command{
 	{name: "beat", run: beat},
 	{name: "bpm", run: bpm},
+	{name: "load", run: load},
 	{name: "decay", run: decay, soundArgs: 1},
 	{name: "gain", run: gain, soundArgs: 1},
 	{name: "clear", run: clear, soundArgs: -1},
 	{name: "choke", run: choke, soundArgs: -1},
 	{name: "rand", run: random, soundArgs: -1},
 	{name: "mute", run: mute, soundArgs: -1},
+	{name: "delete", run: delete, soundArgs: -1},
 }
 
 type command struct {
 	name      string
 	run       func(*session, []*sound, []dub.Node) error
 	soundArgs int
+}
+
+func load(s *session, _ []*sound, args []dub.Node) error {
+	path, err := stringArg(args, 0)
+	if err != nil {
+		return err
+	}
+	snd, err := loadSound(path, s.state.patternLen)
+	if err != nil {
+		return err
+	}
+	s.update(func(st *state) {
+		st.sounds = append(st.sounds, snd)
+	})
+	return nil
+}
+
+func delete(s *session, sounds []*sound, args []dub.Node) error {
+	s.update(func(st *state) {
+		for _, snd1 := range sounds {
+			for i, snd2 := range st.sounds {
+				if snd1.id == snd2.id {
+					putSoundID(snd1.id)
+					st.sounds = append(st.sounds[:i], st.sounds[i+1:]...)
+				}
+			}
+		}
+	})
+	return nil
 }
 
 func clear(s *session, sounds []*sound, args []dub.Node) error {
@@ -118,7 +149,6 @@ func random(s *session, sounds []*sound, args []dub.Node) error {
 
 func choke(s *session, sounds []*sound, args []dub.Node) error {
 	s.update(func(st *state) {
-		st.chokeGroups = make([][]int, len(st.sounds))
 		for _, snd := range sounds {
 			snd.chokeGroup = nil
 			for _, other := range sounds {
@@ -219,15 +249,12 @@ func eval(s *session, cmd dub.Command) error {
 }
 
 func getSound(s *session, identifier dub.Identifier) (*sound, error) {
-	// TODO: sound identifiers are just assumed to be single letters for now
-	ident := strings.ToLower(string(identifier))
-	offset := int(ident[0])
-	a := int('a')
-	id := offset - a
-	if offset < a || offset > a+27 || id >= len(s.state.sounds) {
-		return nil, fmt.Errorf("not a valid sound id: %s", identifier)
+	for _, snd := range s.state.sounds {
+		if snd.id == string(identifier) {
+			return snd, nil
+		}
 	}
-	return s.state.sounds[id], nil
+	return nil, fmt.Errorf("unknown sound: %s", identifier)
 }
 
 func resolveSounds(s *session, args []dub.Node, count int) ([]*sound, error) {
@@ -291,4 +318,14 @@ func floatArg(args []dub.Node, pos int) (float64, error) {
 	default:
 		return 0, fmt.Errorf("wrong type for argument %d: expected float", pos)
 	}
+}
+
+func stringArg(args []dub.Node, pos int) (string, error) {
+	if pos >= len(args) {
+		return "", fmt.Errorf("wrong number of arguments")
+	}
+	if v, ok := args[pos].(dub.String); ok {
+		return string(v), nil
+	}
+	return "", fmt.Errorf("wrong type for argument %d: expected string", pos)
 }

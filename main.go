@@ -70,7 +70,6 @@ func main() {
 		machine: &machine{
 			clock: &clock{sampleRate: sampleRate},
 			sum:   make([]float64, bufferSize*nChannels),
-			hits:  make([]int, len(soundFiles)),
 		},
 		state: state{
 			bufferSize: bufferSize,

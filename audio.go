@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -99,10 +100,6 @@ func (m *machine) process(state *state, out []float32) {
 		}
 	}
 
-	for i := range m.hits {
-		m.hits[i] = 0
-	}
-
 	// write samples to output buffer
 	for i, sample := range m.sum {
 		out[i] = float32(sample)
@@ -150,6 +147,7 @@ func min(x, y int) int {
 const maxVoices = 12
 
 type sound struct {
+	id   string
 	file string
 	buf  []float64
 
@@ -187,8 +185,14 @@ func loadSound(path string, patternLen int) (*sound, error) {
 	}
 	defer f.Close()
 
+	id, err := getSoundID()
+	if err != nil {
+		return nil, err
+	}
+
 	r := wav.NewReader(f)
 	snd := sound{
+		id:      id,
 		file:    path,
 		decay:   2,
 		gain:    1.,
@@ -224,4 +228,42 @@ func mustLoadSound(path string, patternLen int) *sound {
 		panic(err)
 	}
 	return snd
+}
+
+const maxSounds = 64
+
+var soundIDs [maxSounds]struct {
+	s     string
+	inUse bool
+}
+
+func init() {
+	const r = 'z' - 'a' + 1
+	const a = 'a'
+	for i := 0; i < maxSounds; i++ {
+		if n := i / r; n > 0 {
+			soundIDs[i].s = string(a+n) + string(a+i%r)
+		} else {
+			soundIDs[i].s = string(a + i)
+		}
+	}
+}
+
+func getSoundID() (string, error) {
+	for n, id := range soundIDs {
+		if !id.inUse {
+			soundIDs[n].inUse = true
+			return id.s, nil
+		}
+	}
+	return "", fmt.Errorf("reached maximum number of sounds: %d", maxSounds)
+}
+
+func putSoundID(id string) {
+	var a, b rune
+	a = (rune(id[0]) - 'a')
+	if len(id) > 1 {
+		b = rune(id[1]) - 'a'*10
+	}
+	soundIDs[a+b].inUse = false
 }
