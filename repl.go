@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -33,8 +34,8 @@ type command struct {
 }
 
 func load(s *session, _ []*sound, args []dub.Node) error {
-	path, err := stringArg(args, 0)
-	if err != nil {
+	var path string
+	if err := getArg(args, 0, &path); err != nil {
 		return err
 	}
 	snd, err := loadSound(path, s.state.patternLen)
@@ -71,8 +72,8 @@ func clear(s *session, sounds []*sound, args []dub.Node) error {
 }
 
 func decay(s *session, sounds []*sound, args []dub.Node) error {
-	d, err := floatArg(args, 0)
-	if err != nil {
+	var d float64
+	if err := getArg(args, 0, &d); err != nil {
 		return err
 	}
 	if d < 0.005 || d > 2 {
@@ -83,8 +84,8 @@ func decay(s *session, sounds []*sound, args []dub.Node) error {
 }
 
 func bpm(s *session, sounds []*sound, args []dub.Node) error {
-	bpm, err := intArg(args, 0)
-	if err != nil {
+	var bpm int
+	if err := getArg(args, 0, &bpm); err != nil {
 		return err
 	}
 	s.update(func(st *state) { st.bpm = float64(bpm) })
@@ -101,12 +102,11 @@ func mute(s *session, sounds []*sound, args []dub.Node) error {
 }
 
 func beat(s *session, sounds []*sound, args []dub.Node) error {
-	num, err := intArg(args, 0)
-	if err != nil {
+	var num, denom int
+	if err := getArg(args, 0, &num); err != nil {
 		return err
 	}
-	denom, err := intArg(args, 1)
-	if err != nil {
+	if err := getArg(args, 1, &denom); err != nil {
 		return err
 	}
 	s.update(func(st *state) {
@@ -162,8 +162,8 @@ func choke(s *session, sounds []*sound, args []dub.Node) error {
 }
 
 func gain(s *session, sounds []*sound, args []dub.Node) error {
-	db, err := floatArg(args, 0)
-	if err != nil {
+	var db float64
+	if err := getArg(args, 0, &db); err != nil {
 		return err
 	}
 	if db > 6 {
@@ -296,36 +296,35 @@ func parseTimeSignature(s string) (timeSig, error) {
 	return timeSig{num: num, denom: denom}, nil
 }
 
-func intArg(args []dub.Node, pos int) (int, error) {
-	if pos >= len(args) {
-		return 0, fmt.Errorf("wrong number of arguments")
+func getArg(args []dub.Node, n int, dest interface{}) error {
+	if n >= len(args) {
+		return errors.New("not enough arguments")
 	}
-	if v, ok := args[pos].(dub.Int); ok {
-		return int(v), nil
-	}
-	return 0, fmt.Errorf("wrong type for argument %d: expected integer", pos)
-}
-
-func floatArg(args []dub.Node, pos int) (float64, error) {
-	if pos >= len(args) {
-		return 0, fmt.Errorf("wrong number of arguments")
-	}
-	switch v := args[pos].(type) {
-	case dub.Float:
-		return float64(v), nil
-	case dub.Int:
-		return float64(int(v)), nil
+	arg := args[n]
+	switch p := dest.(type) {
+	case *string:
+		s, ok := arg.(dub.String)
+		if !ok {
+			return fmt.Errorf("argument error: expected a string")
+		}
+		*p = string(s)
+	case *float64:
+		switch num := arg.(type) {
+		case dub.Float:
+			*p = float64(num)
+		case dub.Int:
+			*p = float64(int(num))
+		default:
+			return fmt.Errorf("argument error: expected a float or integer")
+		}
+	case *int:
+		i, ok := arg.(dub.Int)
+		if !ok {
+			return fmt.Errorf("argument error: expected an integer")
+		}
+		*p = int(i)
 	default:
-		return 0, fmt.Errorf("wrong type for argument %d: expected float", pos)
+		panic("getArg: unhandled destination type: " + fmt.Sprint(p))
 	}
-}
-
-func stringArg(args []dub.Node, pos int) (string, error) {
-	if pos >= len(args) {
-		return "", fmt.Errorf("wrong number of arguments")
-	}
-	if v, ok := args[pos].(dub.String); ok {
-		return string(v), nil
-	}
-	return "", fmt.Errorf("wrong type for argument %d: expected string", pos)
+	return nil
 }
