@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chzyer/readline"
 	"github.com/mrdg/ringo/dub"
 )
 
@@ -18,6 +18,7 @@ var builtins = []command{
 	{name: "beat", run: beat},
 	{name: "bpm", run: bpm},
 	{name: "load", run: load},
+	{name: "exit", run: exit},
 	{name: "decay", run: decay, soundArgs: 1},
 	{name: "gain", run: gain, soundArgs: 1},
 	{name: "clear", run: clear, soundArgs: -1},
@@ -31,6 +32,15 @@ type command struct {
 	name      string
 	run       func(*session, []*sound, []dub.Node) error
 	soundArgs int
+}
+
+func exit(s *session, _ []*sound, _ []dub.Node) error {
+	// TODO: stopping in the middle of playback doesn't sound very good so maybe implement some kind
+	// of synchronization, or a fade out in the overall volume.
+	s.stream.Stop()
+	s.stream.Close()
+	os.Exit(0)
+	return nil
 }
 
 func load(s *session, _ []*sound, args []dub.Node) error {
@@ -174,16 +184,20 @@ func gain(s *session, sounds []*sound, args []dub.Node) error {
 }
 
 func repl(session *session, input io.Reader) error {
-	prompt := bufio.NewScanner(input)
+	rl, err := readline.New("> ")
+	if err != nil {
+		return err
+	}
+	defer rl.Close()
+
 	for {
 		renderState(session.state, os.Stdout)
-		fmt.Printf("> ")
-		if !prompt.Scan() {
-			if err := prompt.Err(); err != nil {
-				return err
-			}
+		line, err := rl.Readline()
+		if err != nil {
+			fmt.Println(err)
+			continue
 		}
-		command, err := dub.Parse(prompt.Text())
+		command, err := dub.Parse(line)
 		if err != nil {
 			fmt.Println(err)
 			continue
