@@ -17,7 +17,7 @@ import (
 var builtins = []command{
 	{name: "beat", run: beat},
 	{name: "bpm", run: bpm},
-	{name: "load", run: load},
+	{name: "load", run: load, soundArgs: -1},
 	{name: "exit", run: exit},
 	{name: "decay", run: decay, soundArgs: 1},
 	{name: "gain", run: gain, soundArgs: 1},
@@ -43,18 +43,25 @@ func exit(s *session, _ []*sound, _ []dub.Node) error {
 	return nil
 }
 
-func load(s *session, _ []*sound, args []dub.Node) error {
+func load(s *session, sounds []*sound, args []dub.Node) error {
 	var path string
 	if err := getArg(args, 0, &path); err != nil {
 		return err
 	}
-	snd, err := loadSound(path, s.state.patternLen)
-	if err != nil {
-		return err
+	if len(sounds) > 0 {
+		snd := sounds[0]
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return snd.load(path)
+	} else {
+		snd, err := loadSound(path, s.state.patternLen)
+		if err != nil {
+			return err
+		}
+		s.update(func(st *state) {
+			st.sounds = append(st.sounds, snd)
+		})
 	}
-	s.update(func(st *state) {
-		st.sounds = append(st.sounds, snd)
-	})
 	return nil
 }
 
@@ -282,7 +289,7 @@ func resolveSounds(s *session, args []dub.Node, count int) ([]*sound, error) {
 		}
 		identifier, ok := arg.(dub.Identifier)
 		if !ok {
-			return nil, fmt.Errorf("expected identifier")
+			break
 		}
 		snd, err := getSound(s, identifier)
 		if err != nil {

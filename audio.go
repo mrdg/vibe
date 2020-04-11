@@ -79,17 +79,18 @@ func (m *machine) process(state *state, out []float32) {
 					voice.env.decaySamples = m.clock.sampleRate * chokeDecay
 					voice.choked = true
 				}
-				voice.pos = sum(m.sum[0:], snd.buf, voice.pos, gain, voice.env.value)
+				voice.pos = sum(m.sum[0:], voice.buf, voice.pos, gain, voice.env.value)
 			}
 		}
 
 		// trigger a new voice
 		if tick && snd.pattern[state.step] != 0 && !snd.muted {
 			voice := snd.findFreeVoice()
+			voice.buf = snd.buf
 			voice.env.startSample = 0
 			voice.env.decaySamples = m.clock.sampleRate * snd.decay
 			voice.choked = false
-			voice.pos = sum(m.sum[offset*2:], snd.buf, 0, gain, voice.env.value)
+			voice.pos = sum(m.sum[offset*2:], voice.buf, 0, gain, voice.env.value)
 		}
 	}
 
@@ -176,21 +177,14 @@ type voice struct {
 	pos    int
 	env    envelope
 	choked bool
+	buf    []float64
 }
 
 func loadSound(path string, patternLen int) (*sound, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
 	id, err := getSoundID()
 	if err != nil {
 		return nil, err
 	}
-
-	r := wav.NewReader(f)
 	snd := sound{
 		id:      id,
 		file:    path,
@@ -205,21 +199,36 @@ func loadSound(path string, patternLen int) (*sound, error) {
 	for i := 0; i < maxVoices; i++ {
 		snd.voices = append(snd.voices, &voice{})
 	}
+	return &snd, snd.load(path)
+}
+
+func (s *sound) load(path string) error {
+	s.buf = nil
+
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	r := wav.NewReader(f)
 	for {
 		samples, err := r.ReadSamples()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return err
 		}
 		for _, sample := range samples {
 			v := r.FloatValue(sample, 0)
-			snd.buf = append(snd.buf, v) // L
-			snd.buf = append(snd.buf, v) // R
+			s.buf = append(s.buf, v) // L
+			s.buf = append(s.buf, v) // R
 		}
 	}
-	return &snd, nil
+
+	s.file = path
+	return nil
 }
 
 func mustLoadSound(path string, patternLen int) *sound {
