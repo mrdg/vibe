@@ -1,3 +1,10 @@
+load "kick.wav"
+load "cymbal.wav"
+load "hihat.wav"
+load "high-tom.wav"
+load "low-tom.wav"
+load "open-hihat.wav"
+load "snare.wav"
 bpm 130
 beat 5 4
 choke f c

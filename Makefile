@@ -1,5 +1,5 @@
 demo run: ringo
-	./ringo -sounds "demo/*.wav" -run demo/commands.txt
+	./ringo -path demo -run demo/commands.txt
 
 ringo: $(wildcard *.go dub/*.go)
 	go build

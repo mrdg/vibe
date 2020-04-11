@@ -15,14 +15,7 @@ func renderState(state state, w io.Writer) {
 		icons = append(icons, numIcon(i))
 	}
 
-	var maxNameLen int
-	for _, snd := range state.sounds {
-		name := displayName(snd.file)
-		if len(name) > maxNameLen {
-			maxNameLen = len(name)
-		}
-	}
-	maxNameLen += 1
+	const maxNameLen = 15
 
 	const spacePerStep = 4
 	spacing := (state.stepSize/sig.denom)*spacePerStep - 1

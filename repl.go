@@ -6,7 +6,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
-	"strconv"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -47,6 +47,18 @@ func load(s *session, sounds []*sound, args []dub.Node) error {
 	var path string
 	if err := getArg(args, 0, &path); err != nil {
 		return err
+	}
+	if !strings.HasPrefix(path, "/") {
+		searchPaths := strings.Split(s.state.searchPath, ":")
+		for _, dir := range searchPaths {
+			fullPath := filepath.Join(dir, path)
+			if _, err := os.Open(fullPath); os.IsNotExist(err) {
+				continue
+			} else {
+				path = fullPath
+				break
+			}
+		}
 	}
 	if len(sounds) > 0 {
 		snd := sounds[0]
@@ -298,23 +310,6 @@ func resolveSounds(s *session, args []dub.Node, count int) ([]*sound, error) {
 		sounds = append(sounds, snd)
 	}
 	return sounds, nil
-}
-
-func parseTimeSignature(s string) (timeSig, error) {
-	var t timeSig
-	parts := strings.Split(s, "/")
-	if len(parts) != 2 {
-		return t, fmt.Errorf("not a valid time signature: %s", s)
-	}
-	num, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return t, fmt.Errorf("bad numerator %s: %s", parts[0], err)
-	}
-	denom, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return t, fmt.Errorf("bad denominator %s: %s", parts[1], err)
-	}
-	return timeSig{num: num, denom: denom}, nil
 }
 
 func getArg(args []dub.Node, n int, dest interface{}) error {

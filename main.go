@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -16,10 +15,8 @@ import (
 
 func main() {
 	var (
-		bpm   = flag.Float64("bpm", 120, "")
-		beat  = flag.String("beat", "7/8", "")
-		files = flag.String("sounds", "*.wav", "")
-		run   = flag.String("run", "", "")
+		path = flag.String("path", ".", "Sample directories separated by ':'")
+		run  = flag.String("run", "", "Path to a file containing commands separated by newlines")
 	)
 	flag.Parse()
 
@@ -29,23 +26,6 @@ func main() {
 		bufferSize = 256
 		stepSize   = 16
 	)
-
-	timeSig, err := parseTimeSignature(*beat)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	patternLen := (stepSize / timeSig.denom) * timeSig.num
-
-	soundFiles, err := filepath.Glob(*files)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var sounds []*sound
-	for _, file := range soundFiles {
-		sounds = append(sounds, mustLoadSound(file, patternLen))
-	}
 
 	var commands []string
 	if *run != "" {
@@ -73,10 +53,10 @@ func main() {
 		},
 		state: state{
 			bufferSize: bufferSize,
-			bpm:        *bpm,
-			timeSig:    timeSig,
-			sounds:     sounds,
-			patternLen: patternLen,
+			searchPath: *path,
+			bpm:        120,
+			timeSig:    timeSig{4, 4},
+			patternLen: 16,
 			stepSize:   stepSize,
 		},
 	}
@@ -116,6 +96,7 @@ type session struct {
 
 type state struct {
 	bufferSize int
+	searchPath string
 	bpm        float64
 	timeSig    timeSig
 	sounds     []*sound
