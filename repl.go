@@ -17,21 +17,23 @@ import (
 var builtins = []command{
 	{name: "beat", run: beat},
 	{name: "bpm", run: bpm},
-	{name: "load", run: load, soundArgs: -1},
 	{name: "exit", run: exit},
-	{name: "decay", run: decay, soundArgs: 1},
-	{name: "gain", run: gain, soundArgs: 1},
-	{name: "clear", run: clear, soundArgs: -1},
-	{name: "choke", run: choke, soundArgs: -1},
-	{name: "rand", run: random, soundArgs: -1},
-	{name: "mute", run: mute, soundArgs: -1},
-	{name: "delete", run: delete, soundArgs: -1},
+	{name: "start", run: start},
+	{name: "load", run: load, minSounds: 0, maxSounds: 1},
+	{name: "decay", run: decay, minSounds: 1, maxSounds: 1},
+	{name: "gain", run: gain, minSounds: 1, maxSounds: 1},
+	{name: "clear", run: clear, minSounds: 1, maxSounds: -1},
+	{name: "choke", run: choke, minSounds: 1, maxSounds: -1},
+	{name: "rand", run: random, minSounds: 1, maxSounds: -1},
+	{name: "mute", run: mute, minSounds: 1, maxSounds: -1},
+	{name: "delete", run: delete, minSounds: 1, maxSounds: -1},
 }
 
 type command struct {
 	name      string
 	run       func(*session, []*sound, []dub.Node) error
-	soundArgs int
+	minSounds int
+	maxSounds int
 }
 
 func exit(s *session, _ []*sound, _ []dub.Node) error {
@@ -41,6 +43,10 @@ func exit(s *session, _ []*sound, _ []dub.Node) error {
 	s.stream.Close()
 	os.Exit(0)
 	return nil
+}
+
+func start(s *session, _ []*sound, _ []dub.Node) error {
+	return s.stream.Start()
 }
 
 func load(s *session, sounds []*sound, args []dub.Node) error {
@@ -216,6 +222,9 @@ func repl(session *session, input io.Reader) error {
 			fmt.Println(err)
 			continue
 		}
+		if len(strings.TrimSpace(line)) == 0 {
+			continue
+		}
 		command, err := dub.Parse(line)
 		if err != nil {
 			fmt.Println(err)
@@ -229,11 +238,8 @@ func repl(session *session, input io.Reader) error {
 }
 
 func eval(s *session, cmd dub.Command) error {
-	if len(cmd.Name) == 1 {
-		snd, err := getSound(s, cmd.Name)
-		if err != nil {
-			return err
-		}
+	snd, err := getSound(s, cmd.Name)
+	if err == nil {
 		for _, arg := range cmd.Args {
 			switch val := arg.(type) {
 			case dub.MatchExpr:
@@ -263,22 +269,22 @@ func eval(s *session, cmd dub.Command) error {
 			}
 		}
 		return nil
-	} else {
-		for _, command := range builtins {
-			if command.name != string(cmd.Name) {
-				continue
-			}
-			sounds, err := resolveSounds(s, cmd.Args, command.soundArgs)
-			if err != nil {
-				return fmt.Errorf("%s: %s", command.name, err)
-			}
-			if err := command.run(s, sounds, cmd.Args[len(sounds):]); err != nil {
-				return fmt.Errorf("%s: %s", command.name, err)
-			}
-			return nil
-		}
-		return fmt.Errorf("unknown function: %s", cmd.Name)
 	}
+
+	for _, command := range builtins {
+		if command.name != string(cmd.Name) {
+			continue
+		}
+		sounds, err := resolveSounds(s, cmd.Args, command.minSounds, command.maxSounds)
+		if err != nil {
+			return fmt.Errorf("%s: %s", command.name, err)
+		}
+		if err := command.run(s, sounds, cmd.Args[len(sounds):]); err != nil {
+			return fmt.Errorf("%s: %s", command.name, err)
+		}
+		return nil
+	}
+	return fmt.Errorf("unknown command: %s", cmd.Name)
 }
 
 func getSound(s *session, identifier dub.Identifier) (*sound, error) {
@@ -290,17 +296,20 @@ func getSound(s *session, identifier dub.Identifier) (*sound, error) {
 	return nil, fmt.Errorf("unknown sound: %s", identifier)
 }
 
-func resolveSounds(s *session, args []dub.Node, count int) ([]*sound, error) {
-	if count == -1 {
-		count = len(args)
+func resolveSounds(s *session, args []dub.Node, min, max int) ([]*sound, error) {
+	if max == -1 {
+		max = len(args)
 	}
 	var sounds []*sound
 	for i, arg := range args {
-		if i >= count {
+		if i >= max {
 			break
 		}
 		identifier, ok := arg.(dub.Identifier)
 		if !ok {
+			if len(sounds) < min {
+				return nil, fmt.Errorf("expects at least %d sound argument(s)", min)
+			}
 			break
 		}
 		snd, err := getSound(s, identifier)

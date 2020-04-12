@@ -181,12 +181,7 @@ type voice struct {
 }
 
 func loadSound(path string, patternLen int) (*sound, error) {
-	id, err := getSoundID()
-	if err != nil {
-		return nil, err
-	}
 	snd := sound{
-		id:      id,
 		file:    path,
 		decay:   2,
 		gain:    1.,
@@ -199,7 +194,15 @@ func loadSound(path string, patternLen int) (*sound, error) {
 	for i := 0; i < maxVoices; i++ {
 		snd.voices = append(snd.voices, &voice{})
 	}
-	return &snd, snd.load(path)
+	if err := snd.load(path); err != nil {
+		return nil, err
+	}
+	id, err := getSoundID()
+	if err != nil {
+		return nil, err
+	}
+	snd.id = id
+	return &snd, nil
 }
 
 func (s *sound) load(path string) error {

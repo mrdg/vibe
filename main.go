@@ -67,10 +67,6 @@ func main() {
 	}
 	session.stream = stream
 
-	if err := stream.Start(); err != nil {
-		log.Fatal(err)
-	}
-
 	for _, line := range commands {
 		cmd, err := dub.Parse(line)
 		if err != nil {
