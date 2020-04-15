@@ -205,9 +205,26 @@ func beat(s *session, sounds []*sound, args []dub.Node) error {
 }
 
 func random(s *session, sounds []*sound, args []dub.Node) error {
+	var mask []int
+	if len(args) > 0 {
+		if val, ok := args[0].(dub.MatchExpr); ok {
+			denom := s.state.timeSig.denom
+			var err error
+			mask, err = dub.EvalMatchExpr(val, denom, s.state.numSteps(), s.state.stepSize, s.state.triplets)
+			if err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("invalid argument type: %v", val)
+		}
+	}
 	s.update(func(st *state) {
 		for _, snd := range sounds {
 			for i := range snd.pattern {
+				if mask != nil && mask[i] == 0 {
+					snd.pattern[i] = 0
+					continue
+				}
 				rand.Seed(time.Now().UnixNano())
 				snd.pattern[i] = rand.Intn(2)
 			}
