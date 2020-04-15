@@ -18,7 +18,12 @@ func renderState(state state, w io.Writer) {
 	const maxNameLen = 15
 
 	const spacePerStep = 4
-	spacing := (state.stepSize/sig.denom)*spacePerStep - 1
+
+	stepsPerCount := state.stepSize / sig.denom
+	if state.triplets {
+		stepsPerCount = state.stepSize / sig.denom / 2 * 3
+	}
+	spacing := stepsPerCount*spacePerStep - 1
 	beats := strings.Join(icons, strings.Repeat(" ", spacing))
 	fmt.Fprintf(w, strings.Repeat(" ", maxNameLen)+"   ♩  %s\n", beats)
 
@@ -47,7 +52,7 @@ func renderState(state state, w io.Writer) {
 	}
 
 	var numbers string
-	for step := 1; step <= state.patternLen; step++ {
+	for step := 1; step <= state.numSteps(); step++ {
 		space := spacePerStep - 2
 		if step < 9 {
 			space++

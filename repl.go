@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ var builtins = []command{
 	{name: "bpm", run: bpm},
 	{name: "exit", run: exit},
 	{name: "start", run: start},
+	{name: "step", run: step},
 	{name: "load", run: load, minSounds: 0, maxSounds: 1},
 	{name: "decay", run: decay, minSounds: 1, maxSounds: 1},
 	{name: "gain", run: gain, minSounds: 1, maxSounds: 1},
@@ -49,6 +51,38 @@ func start(s *session, _ []*sound, _ []dub.Node) error {
 	return s.stream.Start()
 }
 
+func step(s *session, _ []*sound, args []dub.Node) error {
+	var input string
+	if err := getArg(args, 0, &input); err != nil {
+		return err
+	}
+
+	num := strings.TrimSuffix(input, "T")
+	triplets := len(num) != len(input)
+	stepSize, err := strconv.Atoi(num)
+	if err != nil {
+		return err
+	}
+	if stepSize < s.state.timeSig.denom {
+		return fmt.Errorf("step size can't be smaller than 1/%d notes", s.state.timeSig.denom)
+	}
+	s.update(func(st *state) {
+		st.triplets = triplets
+		st.stepSize = stepSize
+		numSteps := st.numSteps()
+
+		for _, snd := range st.sounds {
+			snd.pattern = make([]int, numSteps)
+			prob := make([]float64, numSteps)
+			for j := range prob {
+				prob[j] = 1.0
+			}
+			snd.probs = prob
+		}
+	})
+	return nil
+}
+
 func load(s *session, sounds []*sound, args []dub.Node) error {
 	var path string
 	if err := getArg(args, 0, &path); err != nil {
@@ -72,7 +106,7 @@ func load(s *session, sounds []*sound, args []dub.Node) error {
 		defer s.mu.Unlock()
 		return snd.load(path)
 	} else {
-		snd, err := loadSound(path, s.state.patternLen)
+		snd, err := loadSound(path, s.state.numSteps())
 		if err != nil {
 			return err
 		}
@@ -100,7 +134,7 @@ func delete(s *session, sounds []*sound, args []dub.Node) error {
 func clear(s *session, sounds []*sound, args []dub.Node) error {
 	s.update(func(st *state) {
 		for _, snd := range sounds {
-			snd.pattern = make([]int, st.patternLen)
+			snd.pattern = make([]int, st.numSteps())
 		}
 	})
 	return nil
@@ -145,22 +179,22 @@ func beat(s *session, sounds []*sound, args []dub.Node) error {
 		return err
 	}
 	s.update(func(st *state) {
-		st.timeSig = timeSig{num: int(num), denom: int(denom)}
-		st.patternLen = (st.stepSize / st.timeSig.denom) * st.timeSig.num
+		st.timeSig = timeSig{num: num, denom: denom}
+		numSteps := st.numSteps()
 
 		for _, snd := range st.sounds {
-			diff := len(snd.pattern) - st.patternLen
+			diff := len(snd.pattern) - numSteps
 			switch {
 			case diff > 0:
-				snd.pattern = snd.pattern[:st.patternLen]
+				snd.pattern = snd.pattern[:numSteps]
 			case diff < 0:
 				tmp := snd.pattern
-				snd.pattern = make([]int, st.patternLen)
+				snd.pattern = make([]int, numSteps)
 				for i, v := range tmp {
 					snd.pattern[i] = v
 				}
 			}
-			prob := make([]float64, st.patternLen)
+			prob := make([]float64, numSteps)
 			for j := range prob {
 				prob[j] = 1.0
 			}
@@ -243,9 +277,8 @@ func eval(s *session, cmd dub.Command) error {
 		for _, arg := range cmd.Args {
 			switch val := arg.(type) {
 			case dub.MatchExpr:
-				num := s.state.timeSig.num
 				denom := s.state.timeSig.denom
-				seq, err := dub.EvalMatchExpr(val, num, denom, s.state.stepSize)
+				seq, err := dub.EvalMatchExpr(val, denom, s.state.numSteps(), s.state.stepSize, s.state.triplets)
 				if err != nil {
 					return err
 				}

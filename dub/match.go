@@ -35,17 +35,28 @@ func (l listMatch) match(i int) bool {
 	return false
 }
 
-func EvalMatchExpr(expr MatchExpr, numerator, denominator, stepSize int) ([]int, error) {
-	seq := make([]int, (stepSize/denominator)*numerator)
+// NOTE: when playing triplets in a compound meter, '*/* will play each triplet eighth note instead the regular
+// eighth notes on the beat.
+func EvalMatchExpr(expr MatchExpr, denominator, numSteps, stepSize int, triplets bool) ([]int, error) {
+	seq := make([]int, numSteps)
 
 	for i := len(expr.matchers) - 1; i >= 0; i-- {
 		item := expr.matchers[i]
-		level := int(float64(denominator) * math.Pow(2.0, float64(item.level)))
+		// NOTE: matching is always relative to quarter notes, i.e. '* always plays each quarter note
+		// regardless of the time signature.
+		level := int(4. * math.Pow(2., float64(item.level)))
 		if level > stepSize {
 			return nil, fmt.Errorf("can't match on %d notes with step size %d", level, stepSize)
 		}
 		skip := stepSize / level
-		notesPerBeat := level / denominator
+		notesPerBeat := level / 4.
+		if triplets {
+			if item.level > 0 {
+				notesPerBeat = level / 4 / 2 * 3
+			} else {
+				skip = stepSize / level / 2 * 3
+			}
+		}
 
 		for note, steps := 0, 0; note < len(seq); note += skip {
 			// calculate a note number relative to other notes on the same division, e.g.
@@ -63,7 +74,11 @@ func EvalMatchExpr(expr MatchExpr, numerator, denominator, stepSize int) ([]int,
 				}
 			} else {
 				// zero steps that are unmatched by the current level
-				for i := note; i < note+skip; i++ {
+				max := note + skip
+				if max >= len(seq) {
+					max = len(seq)
+				}
+				for i := note; i < max; i++ {
 					seq[i] = 0
 				}
 			}

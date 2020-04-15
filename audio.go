@@ -28,12 +28,12 @@ func (c *clock) tick(state state) (int, bool) {
 	// BPM is assumed to be specified as a quarter note value, i.e. ♩ = 120,
 	// regardless of the time signature. This seems to be what DAWs are doing
 	// as well.
-	var (
-		sig          = state.timeSig
-		ticksPerBeat = (state.patternLen / sig.num) * (sig.denom / 4)
-		ticksPerSec  = (state.bpm * float64(ticksPerBeat)) / 60.0
-		tickDuration = uint64(c.sampleRate / ticksPerSec)
-	)
+	ticksPerQuarterNote := float64(state.stepSize) / 4.
+	if state.triplets {
+		ticksPerQuarterNote = float64(state.stepSize) / 4. / 2. * 3
+	}
+	ticksPerSec := (state.bpm * ticksPerQuarterNote) / 60.0
+	tickDuration := uint64(c.sampleRate / ticksPerSec)
 
 	frame := int(c.nextTick - c.samples)
 	c.samples += uint64(state.bufferSize)
@@ -56,7 +56,7 @@ func (m *machine) process(state *state, out []float32) {
 	offset, tick := m.clock.tick(*state)
 
 	for _, snd := range state.sounds {
-		if state.step >= state.patternLen {
+		if state.step >= state.numSteps() {
 			state.step = 0
 		}
 		gain := math.Pow(10, snd.gain/20.0)
@@ -96,7 +96,7 @@ func (m *machine) process(state *state, out []float32) {
 
 	if tick {
 		state.step++
-		if state.step >= state.patternLen {
+		if state.step >= state.numSteps() {
 			state.step = 0
 		}
 	}
@@ -180,13 +180,13 @@ type voice struct {
 	buf    []float64
 }
 
-func loadSound(path string, patternLen int) (*sound, error) {
+func loadSound(path string, numSteps int) (*sound, error) {
 	snd := sound{
 		file:    path,
 		decay:   2,
 		gain:    1.,
-		pattern: make([]int, patternLen),
-		probs:   make([]float64, patternLen),
+		pattern: make([]int, numSteps),
+		probs:   make([]float64, numSteps),
 	}
 	for i := range snd.probs {
 		snd.probs[i] = 1.
@@ -234,8 +234,8 @@ func (s *sound) load(path string) error {
 	return nil
 }
 
-func mustLoadSound(path string, patternLen int) *sound {
-	snd, err := loadSound(path, patternLen)
+func mustLoadSound(path string, numSteps int) *sound {
+	snd, err := loadSound(path, numSteps)
 	if err != nil {
 		panic(err)
 	}

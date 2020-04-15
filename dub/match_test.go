@@ -12,63 +12,86 @@ func TestEvalMatchExpr(t *testing.T) {
 	type test struct {
 		input    string
 		time     string
-		stepSize int
+		stepSize string
 		expect   []int
 	}
 	tests := []test{
 		{
 			input:    "2,4/*",
 			time:     "4/4",
-			stepSize: 16,
+			stepSize: "16",
 			expect:   []int{0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0},
 		},
 		{
 			input:    "1:4",
 			time:     "4/4",
-			stepSize: 16,
+			stepSize: "16",
 			expect:   []int{1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0},
 		},
 		{
 			input:    "1:2//1:4",
 			time:     "4/4",
-			stepSize: 16,
+			stepSize: "16",
 			expect:   []int{1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0},
 		},
 		{
 			input:    "*//3,4",
 			time:     "4/4",
-			stepSize: 16,
+			stepSize: "16",
 			expect:   []int{0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1},
 		},
 
 		{
 			input:    "*/2",
 			time:     "4/4",
-			stepSize: 16,
+			stepSize: "16",
 			expect:   []int{0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0},
 		},
 		{
 			input:    "5",
 			time:     "5/4",
-			stepSize: 16,
+			stepSize: "16",
 			expect:   []int{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0},
 		},
 		{
 			input:    "*",
 			time:     "7/8",
-			stepSize: 16,
-			expect:   []int{1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0},
+			stepSize: "16",
+			expect:   []int{1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0},
 		},
 		{
 			input:    "*/2",
 			time:     "7/8",
-			stepSize: 16,
-			expect:   []int{0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1},
+			stepSize: "16",
+			expect:   []int{0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0},
+		},
+		{
+			input:    "*/2,3",
+			time:     "4/4",
+			stepSize: "16T",
+			expect: []int{
+				0, 0, 1, 0, 1, 0,
+				0, 0, 1, 0, 1, 0,
+				0, 0, 1, 0, 1, 0,
+				0, 0, 1, 0, 1, 0,
+			},
+		},
+		{
+			input:    "*/*",
+			time:     "9/8",
+			stepSize: "16T",
+			expect: []int{
+				1, 0, 1, 0, 1, 0,
+				1, 0, 1, 0, 1, 0,
+				1, 0, 1, 0, 1, 0,
+				1, 0, 1, 0, 1, 0,
+				1, 0, 1,
+			},
 		},
 		{
 			input:    "*",
 			time:     "4/4",
-			stepSize: 32,
+			stepSize: "32",
 			expect: []int{
 				1, 0, 0, 0, 0, 0, 0, 0,
 				1, 0, 0, 0, 0, 0, 0, 0,
@@ -81,18 +104,28 @@ func TestEvalMatchExpr(t *testing.T) {
 		input := "a '" + test.input // make the input a valid dub commad
 		command, err := Parse(input)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			continue
 		}
 		expr := command.Args[0].(MatchExpr)
 
-		num, denom, err := parseTimeSignature(test.time)
+		_, denom, err := parseTimeSignature(test.time)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			continue
 		}
 
-		got, _ := EvalMatchExpr(expr, num, denom, test.stepSize)
+		num := strings.TrimSuffix(test.stepSize, "T")
+		triplets := len(num) != len(test.stepSize)
+		stepSize, err := strconv.Atoi(num)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+
+		got, _ := EvalMatchExpr(expr, denom, len(test.expect), stepSize, triplets)
 		if !reflect.DeepEqual(test.expect, got) {
-			t.Fatalf("seq mismatch:\nwant %v\ngot: %v", test.expect, got)
+			t.Errorf("seq mismatch:\nwant %v\ngot: %v", test.expect, got)
 		}
 	}
 }

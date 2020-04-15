@@ -56,8 +56,8 @@ func main() {
 			searchPath: *path,
 			bpm:        120,
 			timeSig:    timeSig{4, 4},
-			patternLen: 16,
 			stepSize:   stepSize,
+			triplets:   false,
 		},
 	}
 
@@ -98,7 +98,14 @@ type state struct {
 	sounds     []*sound
 	step       int
 	stepSize   int
-	patternLen int
+	triplets   bool
+}
+
+func (s *state) numSteps() int {
+	if s.triplets {
+		return (s.stepSize / s.timeSig.denom / 2 * 3) * s.timeSig.num
+	}
+	return s.stepSize / s.timeSig.denom * s.timeSig.num
 }
 
 type savedState struct {
