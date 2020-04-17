@@ -17,6 +17,7 @@ decay g .6
 gain g -3
 g '2,4
 g '4//4
-d 8
-e 3 4 11 15 17 20
+decay e .5
+e 3 7 9 12 15 18
+d 20
 start
