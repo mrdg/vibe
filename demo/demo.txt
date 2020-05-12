@@ -1,23 +1,21 @@
-load "kick.wav"
-load "cymbal.wav"
-load "hihat.wav"
-load "high-tom.wav"
-load "low-tom.wav"
-load "open-hihat.wav"
-load "snare.wav"
-bpm 130
-beat 5 4
-choke f c
-gain f -10
-f '*/2
-c '*//1,2,4
-c 20
-a '*
-decay g .6
-gain g -3
-g '2,4
-g '4//4
-decay e .5
-e 3 7 9 12 15 18
-d 20
-start
+load-sound sam1 "./demo/kick.wav" 60
+load-sound sam1 "./demo/hihat.wav" 61
+load-sound sam1 "./demo/snare.wav" 62
+load-sound sam1 "./demo/open-hihat.wav" 63
+set seq bpm 125
+set sam1 choke.63 61
+set sam1 level.63 -6
+set sam1 level.60 10
+set sam1 env.decay.62 0.25
+set syn1 env.decay 0.1
+set syn1 env.sustain 0
+set syn1 level 5
+set syn1 cutoff 450
+set syn2 cutoff 4000
+set syn2 env.decay 0.125
+set syn2 env.sustain 0
+loop kick sam1 8 [60 [0 60] 0 0 [60 60] [0 60] 0 0]
+loop snare sam1 8 [0 62 0 62 0 62 0 [62 0 0 62]]
+loop hats sam1 8 [[0 0 63 0] 61 [61 61 61 63] 61 [61 0 61 61] [0 61] [0 61] [0 61]]
+loop chords syn2 8 [[{60 63 68}{60 63 67} 0 {60 63 67}] 0 0 [{66 69 73} {66 69 73} {66 69 73} 0] [{60 63 67} 0 0 {60 63 67}] [0 {60 63 67}] 0 0]
+loop bass syn1 8 [[36 36 0 36] [0 36] [48 0 0 48] [0 39 0 51] [36 36 0 36] [0 0 0 36] [0 51 0 39] [48 0 39 51]]

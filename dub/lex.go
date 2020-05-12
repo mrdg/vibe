@@ -11,28 +11,23 @@ type tokenType int
 
 const (
 	typeUnknown tokenType = iota
-	typeInt
-	typeFloat
+	typeNumber
 	typeIdentifier
 	typeString
-	typeQuote
-	typeComma
-	typeColon
-	typeSlash
-	typeAsterisk
-	typeSemicolon
+	typeLeftBracket
+	typeRightBracket
+	typeLeftCurly
+	typeRightCurly
 	typeEOF
 )
 
 const eof = -1
 
 var simpleTokens = map[rune]tokenType{
-	'\'': typeQuote,
-	',':  typeComma,
-	':':  typeColon,
-	'/':  typeSlash,
-	'*':  typeAsterisk,
-	';':  typeSemicolon,
+	'[': typeLeftBracket,
+	']': typeRightBracket,
+	'{': typeLeftCurly,
+	'}': typeRightCurly,
 }
 
 type token struct {
@@ -146,15 +141,10 @@ func (l *lexer) accept(set string) bool {
 
 func (l *lexer) lexIdentifier() {
 	for {
-		switch r := l.next(); {
-		case unicode.IsLetter(r) || r == '_':
-		default:
-			if r == ' ' || r == eof {
-				l.backup()
-				l.yieldToken(typeIdentifier)
-			} else {
-				l.invalidChar(r)
-			}
+		r := l.next()
+		if r == ' ' || r == eof {
+			l.backup()
+			l.yieldToken(typeIdentifier)
 			return
 		}
 	}
@@ -182,16 +172,12 @@ func (l *lexer) lexNumber() {
 
 	l.accept("-")
 	l.take(digits)
-	isFloat := l.accept(".")
+	l.accept(".")
 	l.take(digits)
 
 	r := l.peek()
-	if r == ' ' || r == '/' || r == ':' || r == ',' || r == eof {
-		if isFloat {
-			l.yieldToken(typeFloat)
-		} else {
-			l.yieldToken(typeInt)
-		}
+	if r == ' ' || r == ']' || r == '}' || r == eof {
+		l.yieldToken(typeNumber)
 	} else {
 		l.invalidChar(r)
 	}

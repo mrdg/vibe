@@ -9,57 +9,40 @@ func TestLexer(t *testing.T) {
 	}
 	tests := []test{
 		{
-			input: "A '* 2",
-			expect: []token{
-				token{typ: typeIdentifier, text: "A"},
-				token{typ: typeQuote, text: "'"},
-				token{typ: typeAsterisk, text: "*"},
-				token{typ: typeInt, text: "2"},
-				token{typ: typeEOF},
-			},
-		},
-		{
 			input: "A 1 2",
 			expect: []token{
 				token{typ: typeIdentifier, text: "A"},
-				token{typ: typeInt, text: "1"},
-				token{typ: typeInt, text: "2"},
+				token{typ: typeNumber, text: "1"},
+				token{typ: typeNumber, text: "2"},
 				token{typ: typeEOF},
 			},
 		},
 		{
-			input: "'1:2 /    / 3,4",
+			input: "env.attack.60 .05",
 			expect: []token{
-				token{typ: typeQuote, text: "'"},
-				token{typ: typeInt, text: "1"},
-				token{typ: typeColon, text: ":"},
-				token{typ: typeInt, text: "2"},
-				token{typ: typeSlash, text: "/"},
-				token{typ: typeSlash, text: "/"},
-				token{typ: typeInt, text: "3"},
-				token{typ: typeComma, text: ","},
-				token{typ: typeInt, text: "4"},
+				token{typ: typeIdentifier, text: "env.attack.60"},
+				token{typ: typeNumber, text: ".05"},
 				token{typ: typeEOF},
 			},
 		},
 		{
 			input: "1.0",
 			expect: []token{
-				token{typ: typeFloat, text: "1.0"},
+				token{typ: typeNumber, text: "1.0"},
 				token{typ: typeEOF},
 			},
 		},
 		{
 			input: "-1.",
 			expect: []token{
-				token{typ: typeFloat, text: "-1."},
+				token{typ: typeNumber, text: "-1."},
 				token{typ: typeEOF},
 			},
 		},
 		{
 			input: "-.1",
 			expect: []token{
-				token{typ: typeFloat, text: "-.1"},
+				token{typ: typeNumber, text: "-.1"},
 				token{typ: typeEOF},
 			},
 		},
@@ -68,7 +51,7 @@ func TestLexer(t *testing.T) {
 			expect: []token{
 				token{typ: typeIdentifier, text: "command"},
 				token{typ: typeString, text: `"this is a string"`},
-				token{typ: typeInt, text: "1"},
+				token{typ: typeNumber, text: "1"},
 				token{typ: typeEOF},
 			},
 		},

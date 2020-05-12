@@ -1,28 +1,25 @@
-# Ringo
+# Vibe
 
-A drum machine / step sequencer.
+This is a program to create musical patterns using commands like:
+
+    loop kick sam1 1 [60]
+
+This loops a 1-beat pattern named 'kick', which sends note number 60 to the
+sampler on every beat. Patterns can updated on the fly by reusing the pattern
+name.
+
+Play a hihat every second eighth note (0's are rests):
+
+    load-sound sam1 "./demo/hihat.wav" 61
+    loop hats sam1 4 [[0 61] [0 61] [0 61] [0 61]]
+
+Use `{}` to play notes at the same time. A minor C chord on the first beat:
+
+    loop chords syn1 4 [{60 63 67} 0 0 0}
 
 To try it out:
 
+    brew install portaudio
     make demo
-
-
-Try some commands:
-
-```
-> a 1 2          # toggle the first two steps of sound a
-> a '1 2         # toggle the first two beats of sound a
-> a '*           # toggle every beat
-> a '*/*         # toggle every 1/8 note (assuming quarter note beats)
-> a '*//*        # toggle every 1/16 note (assuming quarter note beats)
-> a '1,3//*      # toggle every 1/16 note for beats 1 and 3
-> a '*/2         # toggle every 2nd 1/8 note
-> mute a b       # mute sounds a and b
-> rand a         # generate a random pattern for sound a
-> clear b c      # clear the patterns for sound b c
-> bpm 130        # change the bpm
-> beat 9 8       # set the time signature 9/8
-> gain a -4      # apply -4dB gain to sound a
-> decay a .2     # set amplitude decay for sound a to .2 seconds
-> exit
-```
+    # or start fresh with just the samples in the demo directory loaded
+    make new

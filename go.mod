@@ -1,6 +1,6 @@
-module github.com/mrdg/ringo
+module github.com/mrdg/vibe
 
-go 1.12
+go 1.13
 
 require (
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e

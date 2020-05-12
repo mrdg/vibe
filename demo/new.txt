@@ -1,0 +1,4 @@
+load-sound sam1 "./demo/kick.wav" 60
+load-sound sam1 "./demo/hihat.wav" 61
+load-sound sam1 "./demo/snare.wav" 62
+load-sound sam1 "./demo/open-hihat.wav" 63

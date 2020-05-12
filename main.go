@@ -7,122 +7,68 @@ import (
 	"log"
 	"os"
 	"strings"
-	"sync"
 
-	"github.com/gordonklaus/portaudio"
-	"github.com/mrdg/ringo/dub"
+	"github.com/mrdg/vibe/audio"
 )
 
 func main() {
-	var (
-		path = flag.String("path", ".", "Sample directories separated by ':'")
-		run  = flag.String("run", "", "Path to a file containing commands separated by newlines")
-	)
+	run := flag.String("run", "", "File containing newline-separated commands")
 	flag.Parse()
 
-	const (
-		sampleRate = 44100
-		nChannels  = 2
-		bufferSize = 256
-		stepSize   = 16
-	)
+	seq := audio.NewSequencer(audio.NewProps())
+	sam1 := audio.Sampler(audio.NewProps())
+	syn1 := audio.Synth(audio.NewProps())
+	syn2 := audio.Synth(audio.NewProps())
 
-	var commands []string
-	if *run != "" {
-		f, err := os.Open(*run)
-		if err != nil {
-			log.Fatal(err)
-		}
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			commands = append(commands, strings.TrimSpace(scanner.Text()))
-		}
-		if err := scanner.Err(); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if err := portaudio.Initialize(); err != nil {
-		log.Fatal(err)
-	}
-
-	session := &session{
-		machine: &machine{
-			clock: &clock{sampleRate: sampleRate},
-			sum:   make([]float64, bufferSize*nChannels),
-		},
-		state: state{
-			bufferSize: bufferSize,
-			searchPath: *path,
-			bpm:        120,
-			timeSig:    timeSig{4, 4},
-			stepSize:   stepSize,
-			triplets:   false,
+	env := env{
+		sequencer: seq,
+		devices: map[string]audio.Device{
+			"seq":  seq,
+			"syn1": syn1,
+			"syn2": syn2,
+			"sam1": sam1,
 		},
 	}
 
-	stream, err := portaudio.OpenDefaultStream(0, 2, sampleRate, bufferSize, session.process)
+	sink, err := audio.NewSink()
 	if err != nil {
 		log.Fatal(err)
 	}
-	session.stream = stream
 
-	for _, line := range commands {
-		cmd, err := dub.Parse(line)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if err := eval(session, cmd); err != nil {
-			log.Fatal(err)
+	sink.AddSources(syn1, syn2, sam1)
+	sink.AddTicker(seq)
+
+	if len(*run) != 0 {
+		if err := loadFile(&env, *run); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 	}
 
-	if err := repl(session, os.Stdin); err != nil {
-		fmt.Println(err)
+	if err := sink.Start(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer sink.Stop()
+
+	if err := repl(&env); err != nil {
+		sink.Stop()
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-type session struct {
-	stream  *portaudio.Stream
-	mu      sync.Mutex
-	machine *machine
-	state   state
-}
-
-type state struct {
-	bufferSize int
-	searchPath string
-	bpm        float64
-	timeSig    timeSig
-	sounds     []*sound
-	step       int
-	stepSize   int
-	triplets   bool
-}
-
-func (s *state) numSteps() int {
-	if s.triplets {
-		return (s.stepSize / s.timeSig.denom / 2 * 3) * s.timeSig.num
+func loadFile(e *env, path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
 	}
-	return s.stepSize / s.timeSig.denom * s.timeSig.num
-}
-
-type savedState struct {
-	Sounds []struct {
-		Sample  string `json:"sample"`
-		Pattern []int  `json:"pattern"`
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		if _, err := e.eval(strings.TrimSpace(sc.Text())); err != nil {
+			return err
+		}
 	}
-}
-
-func (s *session) process(out []float32) {
-	s.mu.Lock()
-	s.machine.process(&s.state, out)
-	s.mu.Unlock()
-}
-
-func (s *session) update(f func(*state)) {
-	s.mu.Lock()
-	f(&s.state)
-	s.mu.Unlock()
+	return sc.Err()
 }

@@ -4,262 +4,64 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
-	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/chzyer/readline"
-	"github.com/mrdg/ringo/dub"
+	"github.com/mrdg/vibe/audio"
+	"github.com/mrdg/vibe/dub"
 )
 
-var builtins = []command{
-	{name: "beat", run: beat},
-	{name: "bpm", run: bpm},
-	{name: "exit", run: exit},
-	{name: "start", run: start},
-	{name: "step", run: step},
-	{name: "load", run: load, minSounds: 0, maxSounds: 1},
-	{name: "decay", run: decay, minSounds: 1, maxSounds: 1},
-	{name: "gain", run: gain, minSounds: 1, maxSounds: 1},
-	{name: "clear", run: clear, minSounds: 1, maxSounds: -1},
-	{name: "choke", run: choke, minSounds: 1, maxSounds: -1},
-	{name: "rand", run: random, minSounds: 1, maxSounds: -1},
-	{name: "mute", run: mute, minSounds: 1, maxSounds: -1},
-	{name: "delete", run: delete, minSounds: 1, maxSounds: -1},
+type env struct {
+	sequencer *audio.Sequencer
+	devices   map[string]audio.Device
 }
 
-type command struct {
-	name      string
-	run       func(*session, []*sound, []dub.Node) error
-	minSounds int
-	maxSounds int
-}
-
-func exit(s *session, _ []*sound, _ []dub.Node) error {
-	// TODO: stopping in the middle of playback doesn't sound very good so maybe implement some kind
-	// of synchronization, or a fade out in the overall volume.
-	s.stream.Stop()
-	s.stream.Close()
-	os.Exit(0)
-	return nil
-}
-
-func start(s *session, _ []*sound, _ []dub.Node) error {
-	return s.stream.Start()
-}
-
-func step(s *session, _ []*sound, args []dub.Node) error {
-	var input string
-	if err := getArg(args, 0, &input); err != nil {
-		return err
+func (e *env) setProp(device, prop string, v interface{}) error {
+	instr, ok := e.devices[device]
+	if !ok {
+		return fmt.Errorf("unknown device: %s", device)
 	}
+	return instr.Set(prop, v)
+}
 
-	num := strings.TrimSuffix(input, "T")
-	triplets := len(num) != len(input)
-	stepSize, err := strconv.Atoi(num)
+func (e *env) getProp(device, prop string) (interface{}, error) {
+	instr, ok := e.devices[device]
+	if !ok {
+		return nil, fmt.Errorf("unknown device: %s", device)
+	}
+	return instr.Get(prop)
+}
+
+func (e *env) eval(input string) (dub.Node, error) {
+	command, err := dub.Parse(input)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if stepSize < s.state.timeSig.denom {
-		return fmt.Errorf("step size can't be smaller than 1/%d notes", s.state.timeSig.denom)
-	}
-	s.update(func(st *state) {
-		st.triplets = triplets
-		st.stepSize = stepSize
-		numSteps := st.numSteps()
-
-		for _, snd := range st.sounds {
-			snd.pattern = make([]int, numSteps)
-			prob := make([]float64, numSteps)
-			for j := range prob {
-				prob[j] = 1.0
-			}
-			snd.probs = prob
+	name := string(command.Name)
+	for _, cmd := range commands {
+		if name != cmd.name {
+			continue
 		}
-	})
-	return nil
-}
-
-func load(s *session, sounds []*sound, args []dub.Node) error {
-	var path string
-	if err := getArg(args, 0, &path); err != nil {
-		return err
-	}
-	if !strings.HasPrefix(path, "/") {
-		searchPaths := strings.Split(s.state.searchPath, ":")
-		for _, dir := range searchPaths {
-			fullPath := filepath.Join(dir, path)
-			if _, err := os.Open(fullPath); os.IsNotExist(err) {
-				continue
-			} else {
-				path = fullPath
-				break
+		if cmd.arity < 0 {
+			arity := -cmd.arity
+			if len(command.Args) < arity {
+				return nil, fmt.Errorf("%s: wrong number of arguments: need at least %v, got %v",
+					cmd.name, arity, len(command.Args))
 			}
+		} else if len(command.Args) != cmd.arity {
+			return nil, fmt.Errorf("%s: wrong number of arguments: want %v, got %v",
+				cmd.name, cmd.arity, len(command.Args))
 		}
-	}
-	if len(sounds) > 0 {
-		snd := sounds[0]
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		return snd.load(path)
-	} else {
-		snd, err := loadSound(path, s.state.numSteps())
+		result, err := cmd.run(e, command.Args)
 		if err != nil {
-			return err
+			return result, fmt.Errorf("%s error: %w", cmd.name, err)
 		}
-		s.update(func(st *state) {
-			st.sounds = append(st.sounds, snd)
-		})
+		return result, nil
 	}
-	return nil
+	return nil, fmt.Errorf("unknown command: %s", name)
 }
 
-func delete(s *session, sounds []*sound, args []dub.Node) error {
-	s.update(func(st *state) {
-		for _, snd1 := range sounds {
-			for i, snd2 := range st.sounds {
-				if snd1.id == snd2.id {
-					putSoundID(snd1.id)
-					st.sounds = append(st.sounds[:i], st.sounds[i+1:]...)
-				}
-			}
-		}
-	})
-	return nil
-}
-
-func clear(s *session, sounds []*sound, args []dub.Node) error {
-	s.update(func(st *state) {
-		for _, snd := range sounds {
-			snd.pattern = make([]int, st.numSteps())
-		}
-	})
-	return nil
-}
-
-func decay(s *session, sounds []*sound, args []dub.Node) error {
-	var d float64
-	if err := getArg(args, 0, &d); err != nil {
-		return err
-	}
-	if d < 0.005 || d > 2 {
-		return fmt.Errorf("%v is out of range 5ms - 2s", d)
-	}
-	s.update(func(st *state) { sounds[0].decay = d })
-	return nil
-}
-
-func bpm(s *session, sounds []*sound, args []dub.Node) error {
-	var bpm int
-	if err := getArg(args, 0, &bpm); err != nil {
-		return err
-	}
-	s.update(func(st *state) { st.bpm = float64(bpm) })
-	return nil
-}
-
-func mute(s *session, sounds []*sound, args []dub.Node) error {
-	s.update(func(st *state) {
-		for _, snd := range sounds {
-			snd.muted = !snd.muted
-		}
-	})
-	return nil
-}
-
-func beat(s *session, sounds []*sound, args []dub.Node) error {
-	var num, denom int
-	if err := getArg(args, 0, &num); err != nil {
-		return err
-	}
-	if err := getArg(args, 1, &denom); err != nil {
-		return err
-	}
-	s.update(func(st *state) {
-		st.timeSig = timeSig{num: num, denom: denom}
-		numSteps := st.numSteps()
-
-		for _, snd := range st.sounds {
-			diff := len(snd.pattern) - numSteps
-			switch {
-			case diff > 0:
-				snd.pattern = snd.pattern[:numSteps]
-			case diff < 0:
-				tmp := snd.pattern
-				snd.pattern = make([]int, numSteps)
-				for i, v := range tmp {
-					snd.pattern[i] = v
-				}
-			}
-			prob := make([]float64, numSteps)
-			for j := range prob {
-				prob[j] = 1.0
-			}
-			snd.probs = prob
-		}
-	})
-	return nil
-}
-
-func random(s *session, sounds []*sound, args []dub.Node) error {
-	var mask []int
-	if len(args) > 0 {
-		if val, ok := args[0].(dub.MatchExpr); ok {
-			denom := s.state.timeSig.denom
-			var err error
-			mask, err = dub.EvalMatchExpr(val, denom, s.state.numSteps(), s.state.stepSize, s.state.triplets)
-			if err != nil {
-				return err
-			}
-		} else {
-			return fmt.Errorf("invalid argument type: %v", val)
-		}
-	}
-	s.update(func(st *state) {
-		for _, snd := range sounds {
-			for i := range snd.pattern {
-				if mask != nil && mask[i] == 0 {
-					snd.pattern[i] = 0
-					continue
-				}
-				rand.Seed(time.Now().UnixNano())
-				snd.pattern[i] = rand.Intn(2)
-			}
-		}
-	})
-	return nil
-}
-
-func choke(s *session, sounds []*sound, args []dub.Node) error {
-	s.update(func(st *state) {
-		for _, snd := range sounds {
-			snd.chokeGroup = nil
-			for _, other := range sounds {
-				if snd != other {
-					snd.chokeGroup = append(snd.chokeGroup, other)
-				}
-			}
-		}
-	})
-	return nil
-}
-
-func gain(s *session, sounds []*sound, args []dub.Node) error {
-	var db float64
-	if err := getArg(args, 0, &db); err != nil {
-		return err
-	}
-	if db > 6 {
-		return fmt.Errorf("can't gain by more than 6dB")
-	}
-	s.update(func(st *state) { sounds[0].gain = db })
-	return nil
-}
-
-func repl(session *session, input io.Reader) error {
+func repl(env *env) error {
 	rl, err := readline.New("> ")
 	if err != nil {
 		return err
@@ -267,8 +69,10 @@ func repl(session *session, input io.Reader) error {
 	defer rl.Close()
 
 	for {
-		renderState(session.state, os.Stdout)
 		line, err := rl.Readline()
+		if err == io.EOF {
+			return err
+		}
 		if err != nil {
 			fmt.Println(err)
 			continue
@@ -276,130 +80,161 @@ func repl(session *session, input io.Reader) error {
 		if len(strings.TrimSpace(line)) == 0 {
 			continue
 		}
-		command, err := dub.Parse(line)
-		if err != nil {
+		if result, err := env.eval(line); err != nil {
 			fmt.Println(err)
-			continue
-		}
-		if err := eval(session, command); err != nil {
-			fmt.Println(err)
-			continue
+		} else {
+			fmt.Println(result)
 		}
 	}
 }
 
-func eval(s *session, cmd dub.Command) error {
-	snd, err := getSound(s, cmd.Name)
-	if err == nil {
-		for _, arg := range cmd.Args {
-			switch val := arg.(type) {
-			case dub.MatchExpr:
-				denom := s.state.timeSig.denom
-				seq, err := dub.EvalMatchExpr(val, denom, s.state.numSteps(), s.state.stepSize, s.state.triplets)
-				if err != nil {
-					return err
+type command struct {
+	name  string
+	run   func(*env, []dub.Node) (dub.Node, error)
+	arity int // -n means len(args) must be >= n
+}
+
+var commands = []command{
+	{"loop", loopCommand, -3},
+	{"set", setCommand, 3},
+	{"load-sound", loadSoundCommand, 3},
+}
+
+func setCommand(env *env, args []dub.Node) (dub.Node, error) {
+	var device, prop string
+	if err := readArgs(args[:2], &device, &prop); err != nil {
+		return nil, err
+	}
+	switch v := args[2].(type) {
+	case dub.Number:
+		return nil, env.setProp(device, prop, float64(v))
+	case dub.String:
+		return nil, env.setProp(device, prop, string(v))
+	case dub.Identifier:
+		return nil, env.setProp(device, prop, string(v))
+	default:
+		return nil, fmt.Errorf("unsupported property type: %v", v)
+	}
+}
+
+func loadSoundCommand(env *env, args []dub.Node) (dub.Node, error) {
+	var device, file string
+	var key int
+	if err := readArgs(args, &device, &file, &key); err != nil {
+		return nil, err
+	}
+	v, err := env.getProp(device, audio.PropSoundMap)
+	if err != nil {
+		return nil, err
+	}
+	sound, err := audio.LoadSound(file)
+	if err != nil {
+		return nil, err
+	}
+	mapping, ok := v.(*audio.SoundMapping)
+	if !ok {
+		return nil, fmt.Errorf("cannot convert %v to sound mapping", v)
+	}
+	copy := *mapping
+	copy.Put(key, sound)
+	return nil, env.setProp(device, audio.PropSoundMap, &copy)
+}
+
+func loopCommand(env *env, args []dub.Node) (dub.Node, error) {
+	var patternName, device string
+	var length float64
+	var pattern []dub.Node
+	if err := readArgs(args, &patternName, &device, &length, &pattern); err != nil {
+		return nil, err
+	}
+	dev, ok := env.devices[device]
+	if !ok {
+		return nil, fmt.Errorf("unknown device: %s", device)
+	}
+	playable, ok := dev.(audio.Playable)
+	if !ok {
+		return nil, fmt.Errorf("device is not playable: %s", device)
+	}
+	clip := audio.NewClip(length, playable)
+	if err := evalPattern(pattern, clip, length, new(float64)); err != nil {
+		return nil, err
+	}
+	v, err := env.getProp("seq", "clips")
+	if err != nil {
+		return nil, err
+	}
+	old := v.(map[string]*audio.Clip)
+	// copy the map so we don't modify it in place.
+	new := make(map[string]*audio.Clip, len(old))
+	for k, v := range old {
+		new[k] = v
+	}
+	new[patternName] = clip
+	return nil, env.setProp("seq", "clips", new)
+}
+
+func evalPattern(pattern dub.Array, clip *audio.Clip, divLength float64, pos *float64) error {
+	noteLength := divLength / float64(len(pattern))
+	for _, item := range pattern {
+		switch v := item.(type) {
+		case dub.Number:
+			clip.AddNote(*pos, int(v), noteLength)
+			*pos += noteLength
+		case dub.Tuple:
+			for _, item := range v {
+				if i, ok := item.(dub.Number); ok {
+					clip.AddNote(*pos, int(i), noteLength)
 				}
-				s.update(func(st *state) {
-					for i, v := range seq {
-						if snd.pattern[i] != 0 || v != 0 {
-							snd.pattern[i] = 1
-						}
-					}
-				})
-			case dub.Int:
-				s.update(func(st *state) {
-					step := val
-					step--
-					if int(step) < len(snd.pattern) {
-						snd.pattern[step] = 1 - snd.pattern[step]
-					}
-				})
-			default:
-				return fmt.Errorf("unexpected argument: %v", arg)
 			}
-		}
-		return nil
-	}
-
-	for _, command := range builtins {
-		if command.name != string(cmd.Name) {
-			continue
-		}
-		sounds, err := resolveSounds(s, cmd.Args, command.minSounds, command.maxSounds)
-		if err != nil {
-			return fmt.Errorf("%s: %s", command.name, err)
-		}
-		if err := command.run(s, sounds, cmd.Args[len(sounds):]); err != nil {
-			return fmt.Errorf("%s: %s", command.name, err)
-		}
-		return nil
-	}
-	return fmt.Errorf("unknown command: %s", cmd.Name)
-}
-
-func getSound(s *session, identifier dub.Identifier) (*sound, error) {
-	for _, snd := range s.state.sounds {
-		if snd.id == string(identifier) {
-			return snd, nil
-		}
-	}
-	return nil, fmt.Errorf("unknown sound: %s", identifier)
-}
-
-func resolveSounds(s *session, args []dub.Node, min, max int) ([]*sound, error) {
-	if max == -1 {
-		max = len(args)
-	}
-	var sounds []*sound
-	for i, arg := range args {
-		if i >= max {
-			break
-		}
-		identifier, ok := arg.(dub.Identifier)
-		if !ok {
-			if len(sounds) < min {
-				return nil, fmt.Errorf("expects at least %d sound argument(s)", min)
+			*pos += noteLength
+		case dub.Array:
+			if err := evalPattern(v, clip, noteLength, pos); err != nil {
+				return err
 			}
-			break
+		default:
+			return fmt.Errorf("invalid %q in pattern %v", v, pattern)
 		}
-		snd, err := getSound(s, identifier)
-		if err != nil {
-			return nil, err
-		}
-		sounds = append(sounds, snd)
 	}
-	return sounds, nil
+	return nil
 }
 
-func getArg(args []dub.Node, n int, dest interface{}) error {
-	if n >= len(args) {
+func readArgs(args []dub.Node, slots ...interface{}) error {
+	if len(args) != len(slots) {
 		return errors.New("not enough arguments")
 	}
-	arg := args[n]
-	switch p := dest.(type) {
-	case *string:
-		s, ok := arg.(dub.String)
-		if !ok {
-			return fmt.Errorf("argument error: expected a string")
-		}
-		*p = string(s)
-	case *float64:
-		switch num := arg.(type) {
-		case dub.Float:
-			*p = float64(num)
-		case dub.Int:
-			*p = float64(int(num))
+	for n, arg := range args {
+		dest := slots[n]
+		switch p := dest.(type) {
+		case *string:
+			switch s := arg.(type) {
+			case dub.String:
+				*p = string(s)
+			case dub.Identifier:
+				*p = string(s)
+			default:
+				return fmt.Errorf("argument error: expected a string or identifier")
+			}
+		case *float64:
+			n, ok := arg.(dub.Number)
+			if !ok {
+				return fmt.Errorf("argument error: expected a number")
+			}
+			*p = float64(n)
+		case *int:
+			n, ok := arg.(dub.Number)
+			if !ok {
+				return fmt.Errorf("argument error: expected a number")
+			}
+			*p = int(n)
+		case *[]dub.Node:
+			arr, ok := arg.(dub.Array)
+			if !ok {
+				return fmt.Errorf("argument error: expected an array")
+			}
+			*p = arr
 		default:
-			return fmt.Errorf("argument error: expected a float or integer")
+			panic("readArgs: unhandled destination type: " + fmt.Sprint(p))
 		}
-	case *int:
-		i, ok := arg.(dub.Int)
-		if !ok {
-			return fmt.Errorf("argument error: expected an integer")
-		}
-		*p = int(i)
-	default:
-		panic("getArg: unhandled destination type: " + fmt.Sprint(p))
 	}
 	return nil
 }

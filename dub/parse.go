@@ -10,22 +10,20 @@ type Node interface {
 }
 
 func (Identifier) isNode() {}
-func (Int) isNode()        {}
-func (Float) isNode()      {}
+func (Number) isNode()     {}
 func (String) isNode()     {}
-func (MatchExpr) isNode()  {}
+func (Array) isNode()      {}
+func (Tuple) isNode()      {}
+
+type Identifier string
+type Number float64
+type String string
+type Array []Node
+type Tuple []Node
 
 type Command struct {
 	Name Identifier
 	Args []Node
-}
-
-type Identifier string
-type Int int
-type Float float64
-type String string
-type MatchExpr struct {
-	matchers []matchItem
 }
 
 func Parse(input string) (Command, error) {
@@ -48,16 +46,6 @@ func (p *parser) next() token {
 	return t
 }
 
-func (p *parser) peek() token {
-	t := p.next()
-	p.pos--
-	return t
-}
-
-func (p *parser) backup() {
-	p.pos--
-}
-
 func (p *parser) parse() (Command, error) {
 	var cmd Command
 	token := p.next()
@@ -72,24 +60,18 @@ func (p *parser) parse() (Command, error) {
 			arg = Identifier(token.text)
 		case typeString:
 			arg = String(token.text[1 : len(token.text)-1])
-		case typeFloat:
+		case typeNumber:
 			f, err := strconv.ParseFloat(token.text, 64)
 			if err != nil {
 				return cmd, err
 			}
-			arg = Float(f)
-		case typeInt:
-			n, err := strconv.Atoi(token.text)
+			arg = Number(f)
+		case typeLeftBracket:
+			array, err := p.array()
 			if err != nil {
 				return cmd, err
 			}
-			arg = Int(n)
-		case typeQuote:
-			matchExpr, err := p.matchExpr(p.next())
-			if err != nil {
-				return cmd, err
-			}
-			arg = matchExpr
+			arg = array
 		default:
 			return cmd, unexpected(token)
 		}
@@ -98,81 +80,56 @@ func (p *parser) parse() (Command, error) {
 	return cmd, nil
 }
 
-func (p *parser) matchExpr(start token) (MatchExpr, error) {
-	match := MatchExpr{}
-	current := matchItem{}
-
-	for token := start; token.typ != typeEOF; token = p.next() {
+func (p *parser) array() (Array, error) {
+	var array Array
+	var token token
+	for token = p.next(); token.typ != typeEOF; token = p.next() {
 		switch token.typ {
-		case typeInt:
-			switch next := p.peek(); next.typ {
-			case typeComma, typeSlash, typeEOF:
-				list, err := p.listMatch(token)
-				if err != nil {
-					return match, err
-				}
-				current.matcher = list
-			case typeColon:
-				p.next()
-				start, err := strconv.Atoi(token.text)
-				if err != nil {
-					return match, err
-				}
-				t := p.next()
-				if t.typ != typeInt {
-					return match, unexpected(token)
-				}
-				end, err := strconv.Atoi(t.text)
-				if err != nil {
-					return match, err
-				}
-				current.matcher = rangeMatch{start: start, end: end}
-			default:
-				return match, unexpected(token)
+		case typeNumber:
+			f, err := strconv.ParseFloat(token.text, 64)
+			if err != nil {
+				return array, err
 			}
-		case typeAsterisk:
-			current.matcher = matchAll
+			array = append(array, Number(f))
+		case typeRightBracket:
+			return array, nil
+		case typeLeftBracket:
+			nestedArray, err := p.array()
+			if err != nil {
+				return nil, err
+			}
+			array = append(array, nestedArray)
+		case typeLeftCurly:
+			tuple, err := p.tuple()
+			if err != nil {
+				return nil, err
+			}
+			array = append(array, tuple)
 		default:
-			return match, unexpected(token)
-		}
-
-		if p.peek().typ == typeSlash {
-			match.matchers = append(match.matchers, current)
-			current = matchItem{level: current.level + 1}
-			p.next()
-		}
-		for p.peek().typ == typeSlash {
-			p.next()
-			current.level++
+			return nil, unexpected(token)
 		}
 	}
-
-	p.backup()
-	match.matchers = append(match.matchers, current)
-	return match, nil
+	return nil, unexpected(token)
 }
 
-func (p *parser) listMatch(start token) (listMatch, error) {
-	var list listMatch
-	current := start
-	for {
-		switch current.typ {
-		case typeInt:
-			n, err := strconv.Atoi(current.text)
+func (p *parser) tuple() (Tuple, error) {
+	var tuple Tuple
+	var token token
+	for token = p.next(); token.typ != typeEOF; token = p.next() {
+		switch token.typ {
+		case typeNumber:
+			f, err := strconv.ParseFloat(token.text, 64)
 			if err != nil {
-				return list, err
+				return tuple, err
 			}
-			list = append(list, n)
-		case typeComma: // ignore
+			tuple = append(tuple, Number(f))
+		case typeRightCurly:
+			return tuple, nil
 		default:
-			p.backup()
-			if current.typ != typeEOF && current.typ != typeSlash {
-				return list, unexpected(current)
-			}
-			return list, nil
+			return nil, unexpected(token)
 		}
-		current = p.next()
 	}
+	return nil, unexpected(token)
 }
 
 func unexpected(t token) error {
