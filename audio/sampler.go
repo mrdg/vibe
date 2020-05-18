@@ -13,13 +13,13 @@ import (
 )
 
 const PropSoundMap = "sounds.map"
-const numKeys = 25
+const numKeys = 127
 
 func Sampler(props *Props) *Instrument {
 	sounds := props.MustRegister(PropSoundMap, setSoundMapping, &SoundMapping{})
 	var perKeyProps [numKeys]keyProps
 	for n := 0; n < numKeys; n++ {
-		note := strconv.Itoa(rootPitch + n)
+		note := strconv.Itoa(n)
 		var kp keyProps
 		kp.envAttack = props.MustRegister("env.attack."+note, setEnvParam, 0.0005)
 		kp.envDecay = props.MustRegister("env.decay."+note, setEnvParam, 5.0)
@@ -52,12 +52,12 @@ type samplerVoice struct {
 
 func (v *samplerVoice) PlayNote(pitch, velocity, duration int) {
 	mapping := v.sounds.Load().(*SoundMapping)
-	snd := mapping[pitch-rootPitch]
+	snd := mapping[pitch]
 	if snd == nil {
 		log.Printf("sampler: no sound mapped to pitch %d", pitch)
 		return
 	}
-	props := v.keyProps[pitch-rootPitch]
+	props := v.keyProps[pitch]
 	v.buf = snd.buf
 	v.state = stateActive
 	v.env.attack = props.envAttack.Load().(float64)
@@ -70,14 +70,14 @@ func (v *samplerVoice) Notify(pitch int) {
 	if v.state != stateActive {
 		return
 	}
-	props := v.keyProps[v.pitch-rootPitch]
+	props := v.keyProps[v.pitch]
 	if props.choke.Load().(int) == pitch {
 		v.stop()
 	}
 }
 
 func (v *samplerVoice) Process(buf []float64) {
-	level := v.keyProps[v.pitch-rootPitch].level.Load().(float64)
+	level := v.keyProps[v.pitch].level.Load().(float64)
 	gain := math.Pow(10, level/20.0)
 
 	n := len(buf)
@@ -115,12 +115,10 @@ type Sound struct {
 	file string
 }
 
-const rootPitch = 60
-
 type SoundMapping [numKeys]*Sound
 
 func (m *SoundMapping) Put(key int, snd *Sound) {
-	m[key-rootPitch] = snd
+	m[key] = snd
 }
 
 func setSoundMapping(v interface{}, dest *atomic.Value) error {

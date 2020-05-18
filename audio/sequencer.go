@@ -27,7 +27,7 @@ type Playable interface {
 }
 
 func (c *Clip) AddNote(position float64, pitch int, length float64) {
-	if pitch < 1 || pitch > 127 {
+	if pitch < 0 || pitch > 127 {
 		return
 	}
 	c.notes = append(c.notes, note{
