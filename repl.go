@@ -191,6 +191,8 @@ func evalPattern(pattern dub.Array, clip *audio.Clip, divLength float64, pos *fl
 			if err := evalPattern(v, clip, noteLength, pos); err != nil {
 				return err
 			}
+		case dub.Rest:
+			*pos += noteLength
 		default:
 			return fmt.Errorf("invalid %q in pattern %v", v, pattern)
 		}

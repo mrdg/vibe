@@ -14,12 +14,14 @@ func (Number) isNode()     {}
 func (String) isNode()     {}
 func (Array) isNode()      {}
 func (Tuple) isNode()      {}
+func (Rest) isNode()       {}
 
 type Identifier string
 type Number float64
 type String string
 type Array []Node
 type Tuple []Node
+type Rest struct{}
 
 type Command struct {
 	Name Identifier
@@ -105,6 +107,8 @@ func (p *parser) array() (Array, error) {
 				return nil, err
 			}
 			array = append(array, tuple)
+		case typeDash:
+			array = append(array, Rest{})
 		default:
 			return nil, unexpected(token)
 		}

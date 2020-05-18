@@ -18,6 +18,7 @@ const (
 	typeRightBracket
 	typeLeftCurly
 	typeRightCurly
+	typeDash
 	typeEOF
 )
 
@@ -28,6 +29,7 @@ var simpleTokens = map[rune]tokenType{
 	']': typeRightBracket,
 	'{': typeLeftCurly,
 	'}': typeRightCurly,
+	'-': typeDash,
 }
 
 type token struct {

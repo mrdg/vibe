@@ -55,6 +55,16 @@ func TestLexer(t *testing.T) {
 				token{typ: typeEOF},
 			},
 		},
+		{
+			input: `[1 -]`,
+			expect: []token{
+				token{typ: typeLeftBracket, text: "["},
+				token{typ: typeNumber, text: "1"},
+				token{typ: typeDash, text: "-"},
+				token{typ: typeRightBracket, text: "]"},
+				token{typ: typeEOF},
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Log(test.input)
@@ -74,18 +84,6 @@ func TestLexer(t *testing.T) {
 			if want.text != got.text {
 				t.Errorf("wrong text: want %v, got %v", want, got)
 			}
-		}
-	}
-}
-
-func TestLexerErrors(t *testing.T) {
-	for _, input := range []string{
-		"a -",
-		"a .-",
-	} {
-		_, err := lex(input)
-		if err == nil {
-			t.Errorf("expected error for input: %q", input)
 		}
 	}
 }
