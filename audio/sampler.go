@@ -71,7 +71,7 @@ func (v *samplerVoice) Notify(pitch int) {
 		return
 	}
 	props := v.keyProps[v.pitch]
-	if props.choke.Load().(int) == pitch {
+	if p := props.choke.Load().(int); p > 0 && p == pitch {
 		v.stop()
 	}
 }
